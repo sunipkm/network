@@ -18,12 +18,12 @@
 #include "meb_debug.hpp"
 #include "gs_uhf.hpp"
 
-void network_data_init(network_data_t *network_data)
+void network_data_init(network_data_t *network_data, int server_port)
 {
     network_data->connection_ready = false;
     network_data->socket = -1;
     network_data->serv_ip->sin_family = AF_INET;
-    network_data->serv_ip->sin_port = htons(SERVER_PORT);
+    network_data->serv_ip->sin_port = htons(server_port);
     strcpy(network_data->discon_reason, "N/A");   
 }
 
@@ -183,8 +183,7 @@ void *gs_polling_thread(void *args)
 {
     dbprintlf(BLUE_FG "Beginning polling thread.");
 
-    global_data_t *global_data = (global_data_t *)args;
-    network_data_t *network_data = global_data->network_data;
+    network_data_t *network_data = (network_data_t *)args;
 
     while (network_data->rx_active)
     {
@@ -198,15 +197,15 @@ void *gs_polling_thread(void *args)
         else
         {
             // Get our GS Network connection back up and running.
-            gs_connect_to_server(global_data);
+            gs_connect_to_server(network_data);
         }
         usleep(SERVER_POLL_RATE SEC);
     }
 
     dbprintlf(FATAL "GS_POLLING_THREAD IS EXITING!");
-    if (global_data->thread_status > 0)
+    if (network_data->thread_status > 0)
     {
-        global_data->thread_status = 0;
+        network_data->thread_status = 0;
     }
     return nullptr;
 }
@@ -229,14 +228,14 @@ int gs_network_transmit(network_data_t *network_data, NETWORK_FRAME_TYPE type, N
     return 1;
 }
 
-int gs_connect_to_server(global_data_t *global_data)
+int gs_connect_to_server(network_data_t *network_data)
 {
-    network_data_t *network_data = global_data->network_data;
     int connect_status = -1;
 
     dbprintlf(BLUE_FG "Attempting connection to %s:%d.", SERVER_IP, SERVER_PORT);
 
-    network_data->serv_ip->sin_port = htons(SERVER_PORT);
+    // This is already done when initializing network_data.
+    // network_data->serv_ip->sin_port = htons(server_port);
     if ((network_data->socket = socket(AF_INET, SOCK_STREAM, 0)) < 0)
     {
         dbprintlf(RED_FG "Socket creation error.");

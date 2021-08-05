@@ -56,10 +56,12 @@ typedef struct
     char discon_reason[64];
 
     // Booleans
-    bool rx_active; // Only able to receive when this is true.   
+    bool rx_active; // Only able to receive when this is true.  
+
+    int thread_status; 
 } network_data_t;
 
-void network_data_init(network_data_t *network_data);
+void network_data_init(network_data_t *network_data, int server_port);
 
 class NetworkFrame
 {
@@ -161,10 +163,10 @@ int gs_network_transmit(network_data_t *network_data, NETWORK_FRAME_TYPE type, N
 /**
  * @brief 
  * 
- * @param global_data 
+ * @param network_data 
  * @return int 
  */
-int gs_connect_to_server(global_data_t *global_data);
+int gs_connect_to_server(network_data_t *network_data);
 
 /**
  * @brief 
