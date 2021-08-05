@@ -71,8 +71,8 @@ int NetworkFrame::storePayload(NETWORK_FRAME_ENDPOINT endpoint, void *data, int 
         memcpy(payload, data, size);
     }
 
-    crc1 = crc16(payload, NETWORK_FRAME_MAX_PAYLOAD_SIZE);
-    crc2 = crc16(payload, NETWORK_FRAME_MAX_PAYLOAD_SIZE);
+    crc1 = internal_crc16(payload, NETWORK_FRAME_MAX_PAYLOAD_SIZE);
+    crc2 = internal_crc16(payload, NETWORK_FRAME_MAX_PAYLOAD_SIZE);
 
     this->endpoint = endpoint;
 
@@ -121,7 +121,7 @@ int NetworkFrame::checkIntegrity()
     {
         return -6;
     }
-    else if (crc1 != crc16(payload, NETWORK_FRAME_MAX_PAYLOAD_SIZE))
+    else if (crc1 != internal_crc16(payload, NETWORK_FRAME_MAX_PAYLOAD_SIZE))
     {
         return -7;
     }

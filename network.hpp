@@ -193,7 +193,7 @@ int gs_connect(int socket, const struct sockaddr *address, socklen_t socket_size
  * bit is always assumed to be set, thus we only use 16 bits to
  * represent the 17 bit value.
  */
-static inline uint16_t crc16(unsigned char *data_p, uint16_t length)
+static inline uint16_t internal_crc16(unsigned char *data_p, uint16_t length)
 {
 #define CRC16_POLY 0x8408
     unsigned char i;
