@@ -16,7 +16,6 @@
 #include <fcntl.h>
 #include "network.hpp"
 #include "meb_debug.hpp"
-#include "gs_uhf.hpp"
 
 void network_data_init(network_data_t *network_data, int server_port)
 {
@@ -199,7 +198,7 @@ void *gs_polling_thread(void *args)
             // Get our GS Network connection back up and running.
             gs_connect_to_server(network_data);
         }
-        usleep(SERVER_POLL_RATE SEC);
+        usleep(SERVER_POLL_RATE * 1000000);
     }
 
     dbprintlf(FATAL "GS_POLLING_THREAD IS EXITING!");
@@ -232,7 +231,7 @@ int gs_connect_to_server(network_data_t *network_data)
 {
     int connect_status = -1;
 
-    dbprintlf(BLUE_FG "Attempting connection to %s:%d.", SERVER_IP, SERVER_PORT);
+    dbprintlf(BLUE_FG "Attempting connection to %s.", SERVER_IP);
 
     // This is already done when initializing network_data.
     // network_data->serv_ip->sin_port = htons(server_port);
