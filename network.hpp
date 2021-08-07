@@ -19,7 +19,7 @@
 #define NETWORK_FRAME_MAX_PAYLOAD_SIZE 0x64
 #define NETWORK_FRAME_GUID 0x1A1C
 #define NETWORK_FRAME_MAX_PAYLOAD_SIZE 0x64
-#define SERVER_IP "172.30.45.95" // hostname -I
+#define SERVER_IP "127.0.0.1" // hostname -I
 
 enum NETWORK_FRAME_TYPE
 {
