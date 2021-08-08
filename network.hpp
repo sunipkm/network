@@ -20,25 +20,6 @@
 #define NETWORK_FRAME_MAX_PAYLOAD_SIZE 0x100
 #define SERVER_IP "127.0.0.1" // hostname -I
 
-/**
- * @brief X-Band configuration status information to be filled by the radios, sent to the server, and then to the client.
- * 
- */
-typedef struct
-{
-    int mode;               // 0:SLEEP, 1:FDD, 2:TDD
-    int pll_freq;           // PLL Frequency
-    uint64_t LO;            // LO freq
-    uint64_t samp;          // sampling rate
-    uint64_t bw;            // bandwidth
-    char ftr_name[64];      // filter name
-    int temp;               // temperature
-    double rssi;            // RSSI
-    double gain;            // TX Gain
-    char curr_gainmode[16]; // fast_attack or slow_attack
-    bool pll_lock;
-} phy_config_t;
-
 enum NETWORK_FRAME_TYPE
 {
     CS_TYPE_ERROR = -1,       // Something is wrong.
@@ -48,6 +29,7 @@ enum NETWORK_FRAME_TYPE
     CS_TYPE_CONFIG_UHF = 3,   // Configure UHF radio.
     CS_TYPE_CONFIG_XBAND = 4, // Configure X-Band radio.
     CS_TYPE_DATA = 5,         // Most communications will be _DATA.
+    CS_TYPE_POLL_XBAND_CONFIG = 6,  // Asks radio for its config.
 };
 
 enum NETWORK_FRAME_ENDPOINT
