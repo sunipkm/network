@@ -128,9 +128,6 @@ public:
      */
     ssize_t sendFrame(network_data_t *network_data);
 
-    phy_config_t roofxband_config_status[1];
-    phy_config_t haystack_config_status[1];
-
 private:
     uint16_t guid;                                         // 0x1A1C
     NETWORK_FRAME_ENDPOINT endpoint;                       // Where is this going?
