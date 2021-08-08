@@ -163,16 +163,6 @@ private:
 };
 
 /**
- * @brief Periodically polls the Ground Station Network Server for its status.
- * 
- * Doubles as the GS Network connection watch-dog, tries to restablish connection to the server if it sees that we are no longer connected.
- * 
- * @param args 
- * @return void* 
- */
-void *gs_polling_thread(void *args);
-
-/**
  * @brief Packs data into a NetworkFrame and sends it.
  * 
  * @param network_data 
