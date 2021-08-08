@@ -178,7 +178,36 @@ ssize_t NetworkFrame::sendFrame(network_data_t *network_data)
     return send(network_data->socket, this, sizeof(NetworkFrame), 0);
 }
 
+void *gs_polling_thread(void *args)
+{
+    dbprintlf(BLUE_FG "Beginning polling thread.");
 
+    network_data_t *network_data = (network_data_t *)args;
+
+    while (network_data->rx_active)
+    {
+        if (network_data->connection_ready)
+        {
+            NetworkFrame *null_frame = new NetworkFrame(CS_TYPE_NULL, 0x0);
+            null_frame->storePayload(CS_ENDPOINT_SERVER, NULL, 0);
+            null_frame->sendFrame(network_data);
+            delete null_frame;
+        }
+        else
+        {
+            // Get our GS Network connection back up and running.
+            gs_connect_to_server(network_data);
+        }
+        usleep(SERVER_POLL_RATE * 1000000);
+    }
+
+    dbprintlf(FATAL "GS_POLLING_THREAD IS EXITING!");
+    if (network_data->thread_status > 0)
+    {
+        network_data->thread_status = 0;
+    }
+    return nullptr;
+}
 
 int gs_network_transmit(network_data_t *network_data, NETWORK_FRAME_TYPE type, NETWORK_FRAME_ENDPOINT endpoint, void *data, int data_size)
 {

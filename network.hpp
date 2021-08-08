@@ -79,7 +79,7 @@ typedef struct
     // Booleans
     bool rx_active; // Only able to receive when this is true.  
 
-    int thread_status; 
+    int thread_status;
 } network_data_t;
 
 void network_data_init(network_data_t *network_data, int server_port);
@@ -161,6 +161,16 @@ private:
     uint8_t netstat;      // Network Status Information - Read by the client, set by the server: Bitmask - 0:Client, 1:RoofUHF, 2: RoofXB, 3: Haystack
     uint16_t termination; // 0xAAAA
 };
+
+/**
+ * @brief Periodically polls the Ground Station Network Server for its status.
+ * 
+ * Doubles as the GS Network connection watch-dog, tries to restablish connection to the server if it sees that we are no longer connected.
+ * 
+ * @param args 
+ * @return void* 
+ */
+void *gs_polling_thread(void *args);
 
 /**
  * @brief Packs data into a NetworkFrame and sends it.
