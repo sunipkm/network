@@ -18,7 +18,7 @@
 #define RECV_TIMEOUT 15
 #define NETWORK_FRAME_GUID 0x1A1C
 #define NETWORK_FRAME_MAX_PAYLOAD_SIZE 0x100
-#define SERVER_IP "127.0.0.1" // hostname -I
+#define SERVER_IP "129.63.134.29" // hostname -I
 
 enum NETWORK_FRAME_TYPE
 {
@@ -30,6 +30,7 @@ enum NETWORK_FRAME_TYPE
     CS_TYPE_CONFIG_XBAND = 4, // Configure X-Band radio.
     CS_TYPE_DATA = 5,         // Most communications will be _DATA.
     CS_TYPE_POLL_XBAND_CONFIG = 6,  // Asks radio for its config.
+    CS_TYPE_XBAND_COMMAND = 7,
 };
 
 enum NETWORK_FRAME_ENDPOINT
