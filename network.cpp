@@ -223,6 +223,7 @@ int gs_network_transmit(network_data_t *network_data, NETWORK_FRAME_TYPE type, N
     clientserver_frame->storePayload(endpoint, data, data_size);
 
     clientserver_frame->sendFrame(network_data);
+    delete clientserver_frame;
 
     return 1;
 }
