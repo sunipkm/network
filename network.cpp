@@ -206,7 +206,7 @@ void *gs_polling_thread(void *args)
     {
         network_data->thread_status = 0;
     }
-    return nullptr;
+    return NULL;
 }
 
 int gs_network_transmit(network_data_t *network_data, NETWORK_FRAME_TYPE type, NETWORK_FRAME_ENDPOINT endpoint, void *data, int data_size)
