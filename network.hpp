@@ -31,6 +31,8 @@ enum NETWORK_FRAME_TYPE
     CS_TYPE_DATA = 5,         // Most communications will be _DATA.
     CS_TYPE_POLL_XBAND_CONFIG = 6,  // Asks radio for its config.
     CS_TYPE_XBAND_COMMAND = 7,
+    CS_TYPE_TRACKING_CONFIG = 8,
+    CS_TYPE_TRACKING_DATA = 9,
 };
 
 enum NETWORK_FRAME_ENDPOINT
