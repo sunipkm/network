@@ -86,7 +86,7 @@ NetFrame::NetFrame(unsigned char *payload, ssize_t size, NetType type, NetVertex
     }
     else if (strcmp(GSNID, "track") == 0)
     {
-        origin = NetVertex::track;
+        origin = NetVertex::TRACK;
     }
     else
     {
