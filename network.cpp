@@ -172,7 +172,7 @@ int NetFrame::validate()
     }
     if (payload == NULL || payload_size == 0 || type == NetType::POLL)
     {
-        if (payload != NULL || payload_size != 0 || type != NetType::POLL)
+        if (payload_size != 0 || type != NetType::POLL)
         {
             return -3;
         }
