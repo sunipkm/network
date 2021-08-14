@@ -170,8 +170,9 @@ int NetFrame::validate()
     {
         return -2;
     }
-    if (payload == NULL || payload_size == 0 || type == NetType::POLL)
+    else if (payload == NULL || payload_size == 0 || type == NetType::POLL)
     {
+        dbprintlf(YELLOW_FG "payload == NULL: %d; payload_size: %d; type == NetType::POLL: %d", payload == NULL, payload_size, type == NetType::POLL);
         if (payload_size != 0 || type != NetType::POLL)
         {
             return -3;
