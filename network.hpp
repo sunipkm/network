@@ -140,7 +140,7 @@ private:
     NetType type;
     NetVertex origin;
     NetVertex destination;
-    ssize_t payload_size;
+    int payload_size; // Cannot be ssize_t, since its 4 bytes on RPi and 8 on other machines.
     uint16_t crc1;
     unsigned char payload[NETFRAME_MAX_PAYLOAD_SIZE];
     uint16_t crc2;

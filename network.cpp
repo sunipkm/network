@@ -23,10 +23,10 @@ NetData::NetData()
     connection_ready = false;
     socket = -1;
 };
-
+#include <stdint.h>
 NetDataClient::NetDataClient(NetPort server_port, int polling_rate)
 : NetData()
-{
+{;
     this->polling_rate = polling_rate;
     strcpy(disconnect_reason, "N/A");    
     server_ip->sin_family = AF_INET;
