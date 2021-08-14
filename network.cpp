@@ -207,12 +207,12 @@ int NetFrame::validate()
 
 void NetFrame::print()
 {
-    dbprintlf("GUID ------------ 0x%08x\n", guid);
-    dbprintlf("Type ------------ %d\n", (int)type);
-    dbprintlf("Destination ----- %d\n", (int)destination);
-    dbprintlf("Origin ---------- %d\n", (int)origin);
-    dbprintlf("Payload Size ---- %ld\n", payload_size);
-    dbprintlf("CRC1 ------------ 0x%04x\n", crc1);
+    dbprintlf("GUID ------------ 0x%08x", guid);
+    dbprintlf("Type ------------ %d", (int)type);
+    dbprintlf("Destination ----- %d", (int)destination);
+    dbprintlf("Origin ---------- %d", (int)origin);
+    dbprintlf("Payload Size ---- %ld", payload_size);
+    dbprintlf("CRC1 ------------ 0x%04x", crc1);
     dbprintf("Payload ---- (HEX)");
     for (int i = 0; i < payload_size; i++)
     {
