@@ -117,9 +117,9 @@ NetFrame::NetFrame(unsigned char *payload, ssize_t size, NetType type, NetVertex
     this->type = type;
     this->destination = destination;
     payload_size = size;
-    crc1 = internal_crc16(payload, size);
     memcpy(this->payload, payload, payload_size);
-    crc2 = internal_crc16(this->payload, payload_size);
+    crc1 = internal_crc16(this->payload, NETFRAME_MAX_PAYLOAD_SIZE);
+    crc2 = internal_crc16(this->payload, NETFRAME_MAX_PAYLOAD_SIZE);
     netstat = 0x0;
     termination = 0xAAAA;
 }
@@ -193,7 +193,7 @@ int NetFrame::validate()
     {
         return -7;
     }
-    else if (crc1 != internal_crc16(payload, payload_size))
+    else if (crc1 != internal_crc16(payload, NETFRAME_MAX_PAYLOAD_SIZE))
     {
         return -8;
     }
@@ -219,9 +219,9 @@ void NetFrame::print()
         printf(" 0x%04x", payload[i]);
     }
     printf("\n");
-    dbprintlf("CRC2 ------------ 0x%04x\n", crc2);
-    dbprintlf("NetStat --------- 0x%x\n", netstat);
-    dbprintlf("Termination ----- 0x%04x\n", termination);
+    dbprintlf("CRC2 ------------ 0x%04x", crc2);
+    dbprintlf("NetStat --------- 0x%x", netstat);
+    dbprintlf("Termination ----- 0x%04x", termination);
 }
 
 int NetFrame::setNetstat(uint8_t netstat)
