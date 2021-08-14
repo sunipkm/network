@@ -177,17 +177,17 @@ int NetFrame::validate()
             return -3;
         }
     }
-    else if ((int)origin < (int)NetVertex::CLIENT || (int)destination > (int)NetVertex::TRACK)
-    {
-        return -3;
-    }
-    else if ((int)destination < (int)NetVertex::CLIENT || (int)destination > (int)NetVertex::TRACK)
+    else if ((int)origin < (int)NetVertex::CLIENT || (int)origin > (int)NetVertex::TRACK)
     {
         return -4;
     }
-    else if (payload_size < 0 || payload_size > NETFRAME_MAX_PAYLOAD_SIZE)
+    else if ((int)destination < (int)NetVertex::CLIENT || (int)destination > (int)NetVertex::TRACK)
     {
         return -5;
+    }
+    else if (payload_size < 0 || payload_size > NETFRAME_MAX_PAYLOAD_SIZE)
+    {
+        return -6;
     }
     else if (crc1 != crc2)
     {
