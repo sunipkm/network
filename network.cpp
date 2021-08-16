@@ -269,7 +269,9 @@ void *gs_polling_thread(void *args)
         {
 #ifdef GSNID
             // Disables automatic reconnection for the GUI Client and Server.
+#ifndef XB_GS_TEST // Re-enables automatic reconnection for the xb_gs_test GUI client.
             if (strcmp(GSNID, "guiclient") != 0 && strcmp(GSNID, "server") != 0)
+#endif
             {
                 // Get our GS Network connection back up and running.
                 gs_connect_to_server(network_data);
