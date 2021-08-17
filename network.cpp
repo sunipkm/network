@@ -25,22 +25,23 @@ NetData::NetData()
 };
 #include <stdint.h>
 NetDataClient::NetDataClient(NetPort server_port, int polling_rate)
-: NetData()
-{;
+    : NetData()
+{
+    ;
     this->polling_rate = polling_rate;
-    strcpy(disconnect_reason, "N/A");    
+    strcpy(disconnect_reason, "N/A");
     server_ip->sin_family = AF_INET;
     server_ip->sin_port = htons((int)server_port);
 };
 
 NetDataServer::NetDataServer(NetPort listening_port)
-: NetData()
+    : NetData()
 {
     this->listening_port = (int)listening_port;
 };
 
-NetFrame::NetFrame(unsigned char *payload, ssize_t size, NetType type, NetVertex destination)
-{    
+NetFrame::NetFrame(unsigned char *payload, ssize_t size, NetType type, NetVertex destination) : payload(nullptr), payload_size(0)
+{
     if (payload == NULL || size == 0 || type == NetType::POLL)
     {
         if (payload != NULL || size != 0 || type != NetType::POLL)
@@ -102,24 +103,32 @@ NetFrame::NetFrame(unsigned char *payload, ssize_t size, NetType type, NetVertex
     }
 #endif
 #ifndef GSNID
-        dbprintlf(FATAL "GSNID not defined. Please ensure one of the following exists:");
-        dbprintlf(RED_FG "#define GSNID \"guiclient\"");
-        dbprintlf(RED_FG "#define GSNID \"server\"");
-        dbprintlf(RED_FG "#define GSNID \"roofuhf\"");
-        dbprintlf(RED_FG "#define GSNID \"roofxband\"");
-        dbprintlf(RED_FG "#define GSNID \"haystack\"");
-        dbprintlf(RED_FG "#define GSNID \"track\"");
-        dbprintlf(RED_FG "Or, in a Makefile: -DGSNID=\\\"guiclient\\\"");
-        throw std::invalid_argument("GSNID not defined.");
+    dbprintlf(FATAL "GSNID not defined. Please ensure one of the following exists:");
+    dbprintlf(RED_FG "#define GSNID \"guiclient\"");
+    dbprintlf(RED_FG "#define GSNID \"server\"");
+    dbprintlf(RED_FG "#define GSNID \"roofuhf\"");
+    dbprintlf(RED_FG "#define GSNID \"roofxband\"");
+    dbprintlf(RED_FG "#define GSNID \"haystack\"");
+    dbprintlf(RED_FG "#define GSNID \"track\"");
+    dbprintlf(RED_FG "Or, in a Makefile: -DGSNID=\\\"guiclient\\\"");
+    throw std::invalid_argument("GSNID not defined.");
 #endif
 
     guid = NETFRAME_GUID;
     this->type = type;
     this->destination = destination;
-    payload_size = size;
-    memcpy(this->payload, payload, payload_size);
-    crc1 = internal_crc16(this->payload, NETFRAME_MAX_PAYLOAD_SIZE);
-    crc2 = internal_crc16(this->payload, NETFRAME_MAX_PAYLOAD_SIZE);
+    payload_size = size < NETFRAME_MIN_PAYLOAD_SIZE ? NETFRAME_MIN_PAYLOAD_SIZE : size;
+    if (payload_size > NETFRAME_MAX_PAYLOAD_SIZE)
+        throw std::invalid_argument("Payload size larger than 0xfffe4");
+    this->payload = (uint8_t *)malloc(payload_size);
+    if (this->payload != nullptr)
+    {
+        if (payload_size == NETFRAME_MIN_PAYLOAD_SIZE)
+            memset(this->payload, 0x0, NETFRAME_MIN_PAYLOAD_SIZE);
+        memcpy(this->payload, payload, payload_size);
+    }
+    crc1 = internal_crc16(this->payload, payload_size);
+    crc2 = internal_crc16(this->payload, payload_size);
     netstat = 0x0;
     termination = 0xAAAA;
 }
@@ -157,7 +166,131 @@ ssize_t NetFrame::sendFrame(NetData *network_data)
         return -1;
     }
 
-    return send(network_data->socket, this, sizeof(NetFrame), 0);
+    ssize_t send_sz = 0;
+    uint8_t *buf = nullptr;
+    ssize_t malloc_sz = sizeof(NetFrameHeaderStruct) + this->payload_size + sizeof(NetFrameFooterStruct);
+    buf = (uint8_t *)malloc(malloc_sz);
+    if (buf == nullptr)
+    {
+        return -1;
+    }
+    NetFrameHeaderStruct *hdr = (NetFrameHeaderStruct *)buf;
+    hdr->guid = this->guid;
+    hdr->type = (uint32_t)this->type;
+    hdr->origin = (uint32_t)this->origin;
+    hdr->destination = (uint32_t)this->destination;
+    hdr->payload_size = this->payload_size;
+    hdr->crc1 = this->crc1;
+
+    memcpy(buf + sizeof(NetFrameHeaderStruct), this->payload, this->payload_size);
+
+    NetFrameFooterStruct *ftr = (NetFrameFooterStruct *)(buf + sizeof(NetFrameHeaderStruct) + this->payload_size);
+    ftr->crc2 = this->crc2;
+    ftr->netstat = this->netstat;
+    ftr->termination = termination;
+
+    this->frame_sz = malloc_sz;
+
+    send_sz = send(network_data->socket, buf, malloc_sz, 0);
+    free(buf);
+    return send_sz;
+}
+
+ssize_t NetFrame::recvFrame(NetData *network_data)
+{
+    if (!(network_data->connection_ready))
+    {
+        dbprintlf(YELLOW_FG "Connection is not ready, send aborted.");
+        return -1;
+    }
+
+    if (network_data->socket < 0)
+    {
+        dbprintlf(RED_FG "Invalid socket (%d).", network_data->socket);
+        return -1;
+    }
+
+    // verify GUID
+    NetFrameHeaderStruct frame_hdr;
+    int ofst = 0;
+    do
+    {
+        int sz = recv(network_data->socket, frame_hdr.bytes + ofst, 1, MSG_WAITALL);
+        if (sz < 0)
+            break; // connection broken
+        if ((sz == 1) && (frame_hdr.bytes[ofst] == (uint8_t)(NETFRAME_GUID >> (ofst * 8))))
+            ofst++;
+        else
+            ofst = 0;
+    } while (ofst < sizeof(NETFRAME_GUID));
+    // receive rest of header
+    do
+    {
+        int sz = recv(network_data->socket, frame_hdr.bytes + ofst, sizeof(NetFrameHeaderStruct) - ofst, MSG_WAITALL);
+        if (sz < 0)
+            break;
+        ofst += sz;
+    } while (ofst < sizeof(NetFrameHeaderStruct));
+    if (ofst == sizeof(NetFrameHeaderStruct)) // success
+    {
+        this->guid = frame_hdr.guid;
+        this->type = (NetType)frame_hdr.type;
+        this->origin = (NetVertex)frame_hdr.origin;
+        this->destination = (NetVertex)frame_hdr.destination;
+        this->payload_size = frame_hdr.payload_size;
+        this->crc1 = frame_hdr.crc1;
+        if ((payload_size >= 0) && (payload_size <= NETFRAME_MAX_PAYLOAD_SIZE))
+        {
+            this->payload = (uint8_t *)malloc(this->payload_size);
+        }
+        else
+        {
+            return -2; // invalid size
+        }
+    }
+    else // failure
+    {
+        return -1;
+    }
+    if (this->payload == nullptr)
+    {
+        return -3; // malloc failed
+    }
+    ofst = 0;
+    do
+    {
+        int sz = recv(network_data->socket, this->payload + ofst, this->payload_size - ofst, MSG_WAITALL);
+        if (sz < 0)
+        {
+            free(this->payload);
+            return -4; // connection broken mid-receive-payload
+        }
+        ofst += sz;
+    } while (ofst < this->payload_size);
+    ofst = 0;
+    NetFrameFooterStruct frame_ftr;
+    do
+    {
+        int sz = recv(network_data->socket, frame_ftr.bytes + ofst, sizeof(NetFrameFooterStruct) - ofst, MSG_WAITALL);
+        if (sz < 0)
+        {
+            free(this->payload);
+            return -4; // connection broken
+        }
+        ofst += sz;
+    } while (ofst < sizeof(NetFrameFooterStruct));
+    // memcpy
+    if (ofst == sizeof(NetFrameFooterStruct))
+    {
+        this->crc2 = frame_ftr.crc2;
+        this->netstat = frame_ftr.netstat;
+        this->termination = frame_ftr.termination;
+    }
+    if (this->validate())
+    {
+        return this->payload_size;
+    }
+    return -1;
 }
 
 int NetFrame::validate()
@@ -194,7 +327,7 @@ int NetFrame::validate()
     {
         return -7;
     }
-    else if (crc1 != internal_crc16(payload, NETFRAME_MAX_PAYLOAD_SIZE))
+    else if (crc1 != internal_crc16(payload, payload_size))
     {
         return -8;
     }
@@ -278,14 +411,14 @@ void *gs_polling_thread(void *args)
             }
 #endif
 #ifndef GSNID
-        dbprintlf(FATAL "GSNID not defined. Please ensure one of the following exists:");
-        dbprintlf(RED_FG "#define GSNID \"guiclient\"");
-        dbprintlf(RED_FG "#define GSNID \"server\"");
-        dbprintlf(RED_FG "#define GSNID \"roofuhf\"");
-        dbprintlf(RED_FG "#define GSNID \"roofxband\"");
-        dbprintlf(RED_FG "#define GSNID \"haystack\"");
-        dbprintlf(RED_FG "#define GSNID \"track\"");
-        dbprintlf(RED_FG "Or, in a Makefile: -DGSNID=\\\"guiclient\\\"");
+            dbprintlf(FATAL "GSNID not defined. Please ensure one of the following exists:");
+            dbprintlf(RED_FG "#define GSNID \"guiclient\"");
+            dbprintlf(RED_FG "#define GSNID \"server\"");
+            dbprintlf(RED_FG "#define GSNID \"roofuhf\"");
+            dbprintlf(RED_FG "#define GSNID \"roofxband\"");
+            dbprintlf(RED_FG "#define GSNID \"haystack\"");
+            dbprintlf(RED_FG "#define GSNID \"track\"");
+            dbprintlf(RED_FG "Or, in a Makefile: -DGSNID=\\\"guiclient\\\"");
 #endif
         }
         usleep(network_data->polling_rate * 1000000);

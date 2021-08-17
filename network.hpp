@@ -17,7 +17,8 @@
 #define SERVER_POLL_RATE 5
 #define RECV_TIMEOUT 15
 #define NETFRAME_GUID 0x4d454239
-#define NETFRAME_MAX_PAYLOAD_SIZE 0x100
+#define NETFRAME_MIN_PAYLOAD_SIZE 0x100
+#define NETFRAME_MAX_PAYLOAD_SIZE 0xfffe4 
 #define SERVER_IP "129.63.134.29"
 
 enum class NetType
@@ -95,7 +96,17 @@ public:
      * @param dest 
      */
     NetFrame(unsigned char *payload, ssize_t size, NetType type, NetVertex destination);
-    
+    NetFrame() : payload_size(0), payload(nullptr)
+    {
+
+    }
+    ~NetFrame()
+    {
+        if (payload != nullptr)
+            free(payload);
+        payload = nullptr;
+        payload_size = 0;
+    }
     /**
      * @brief Copies payload to the passed space in memory.
      * 
@@ -108,9 +119,17 @@ public:
     /**
      * @brief Sends itself using the network data passed to it.
      * 
-     * @return ssize_t Number of bytes sent if successful, negative on failure. 
+     * @return ssize_t Negative on failure, 0 on success 
      */
     ssize_t sendFrame(NetData *network_data);
+
+    /**
+     * @brief Receives data into a NetFrame
+     * 
+     * @param network_data Network Data struct 
+     * @return ssize_t Number of bytes received
+     */
+    ssize_t recvFrame(NetData *network_data);
 
     /**
      * @brief Checks the validity of itself.
@@ -133,6 +152,14 @@ public:
     NetVertex getOrigin(){ return origin; };
     NetVertex getDestination(){ return destination; };
     int getPayloadSize(){ return payload_size; };
+    /**
+     * @brief Get the Frame Size of the NetFrame (applicable only for sendFrame())
+     * 
+     * @return ssize_t Frame size of sendFrame(), should be checked against the return value of sendFrame()
+     */
+    ssize_t getFrameSize() {
+        return frame_sz;
+    }
     uint8_t getNetstat(){ return netstat; };
 
 private:
@@ -142,11 +169,37 @@ private:
     NetVertex destination;
     int payload_size; // Cannot be ssize_t, since its 4 bytes on RPi and 8 on other machines.
     uint16_t crc1;
-    unsigned char payload[NETFRAME_MAX_PAYLOAD_SIZE];
+    unsigned char *payload;
     uint16_t crc2;
     uint8_t netstat;
     uint16_t termination;
+    ssize_t frame_sz;
 };
+
+typedef union
+{
+    struct __attribute__((packed))
+    {
+        uint32_t guid;
+        uint32_t type;
+        uint32_t origin;
+        uint32_t destination;
+        uint32_t payload_size;
+        uint16_t crc1;
+    };
+    uint8_t bytes[22];
+} NetFrameHeaderStruct;
+
+typedef union
+{
+    struct __attribute__((packed))
+    {
+        uint16_t crc2;
+        uint8_t netstat;
+        uint16_t termination;
+    };
+    uint8_t bytes[5];
+} NetFrameFooterStruct;
 
 /**
  * @brief Periodically polls the Ground Station Network Server for its status.
