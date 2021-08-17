@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <cstring>
 #include <stdexcept>
+#include <stdint.h>
 #include <unistd.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -23,7 +24,7 @@ NetData::NetData()
     connection_ready = false;
     socket = -1;
 };
-#include <stdint.h>
+
 NetDataClient::NetDataClient(NetPort server_port, int polling_rate)
     : NetData()
 {
@@ -117,20 +118,39 @@ NetFrame::NetFrame(unsigned char *payload, ssize_t size, NetType type, NetVertex
     guid = NETFRAME_GUID;
     this->type = type;
     this->destination = destination;
+
+    // Enforces a minimum payload capacity, even if the payload size if less.
     payload_size = size < NETFRAME_MIN_PAYLOAD_SIZE ? NETFRAME_MIN_PAYLOAD_SIZE : size;
+
+    // Payload too large error.
     if (payload_size > NETFRAME_MAX_PAYLOAD_SIZE)
-        throw std::invalid_argument("Payload size larger than 0xfffe4");
+    {
+        throw std::invalid_argument("Payload size larger than 0xfffe4.");
+    }
+
     this->payload = (uint8_t *)malloc(payload_size);
     if (this->payload != nullptr)
     {
         if (payload_size == NETFRAME_MIN_PAYLOAD_SIZE)
+        {
             memset(this->payload, 0x0, NETFRAME_MIN_PAYLOAD_SIZE);
+        }
+            
         memcpy(this->payload, payload, payload_size);
     }
+    
     crc1 = internal_crc16(this->payload, payload_size);
     crc2 = internal_crc16(this->payload, payload_size);
     netstat = 0x0;
     termination = 0xAAAA;
+}
+
+NetFrame::~NetFrame()
+{
+    if (payload != nullptr)
+        free(payload);
+    payload = nullptr;
+    payload_size = 0;
 }
 
 int NetFrame::retrievePayload(unsigned char *storage, ssize_t capacity)
@@ -166,34 +186,53 @@ ssize_t NetFrame::sendFrame(NetData *network_data)
         return -1;
     }
 
-    ssize_t send_sz = 0;
-    uint8_t *buf = nullptr;
-    ssize_t malloc_sz = sizeof(NetFrameHeaderStruct) + this->payload_size + sizeof(NetFrameFooterStruct);
-    buf = (uint8_t *)malloc(malloc_sz);
-    if (buf == nullptr)
+    if (payload_size < 0)
+    {
+        dbprintlf(RED_FG "Frame was constructed using NetFrame() not NetFrame(unsigned char *, ssize_t, NetType, NetVertex), has not had data read into it, and is therefore unsendable.");
+        return -1;
+    }
+
+    ssize_t send_size = 0;
+    uint8_t *buffer = nullptr;
+    ssize_t malloc_size = sizeof(NetFrameHeader) + this->payload_size + sizeof(NetFrameFooter);
+    buffer = (uint8_t *)malloc(malloc_size);
+
+    if (buffer == nullptr)
     {
         return -1;
     }
-    NetFrameHeaderStruct *hdr = (NetFrameHeaderStruct *)buf;
-    hdr->guid = this->guid;
-    hdr->type = (uint32_t)this->type;
-    hdr->origin = (uint32_t)this->origin;
-    hdr->destination = (uint32_t)this->destination;
-    hdr->payload_size = this->payload_size;
-    hdr->crc1 = this->crc1;
 
-    memcpy(buf + sizeof(NetFrameHeaderStruct), this->payload, this->payload_size);
+    // To send a NetFrame which contains a dynamically allocated payload buffer, we must construct a sendable buffer of three components:
+    // 1. Header
+    // 2. Payload
+    // 3. Footer
 
-    NetFrameFooterStruct *ftr = (NetFrameFooterStruct *)(buf + sizeof(NetFrameHeaderStruct) + this->payload_size);
-    ftr->crc2 = this->crc2;
-    ftr->netstat = this->netstat;
-    ftr->termination = termination;
+    // Set the header area of the buffer.
+    NetFrameHeader *header = (NetFrameHeader *)buffer;
+    header->guid = this->guid;
+    header->type = (uint32_t)this->type;
+    header->origin = (uint32_t)this->origin;
+    header->destination = (uint32_t)this->destination;
+    header->payload_size = this->payload_size;
+    header->crc1 = this->crc1;
 
-    this->frame_sz = malloc_sz;
+    // Copy the payload into the buffer.
+    memcpy(buffer + sizeof(NetFrameHeader), this->payload, this->payload_size);
 
-    send_sz = send(network_data->socket, buf, malloc_sz, 0);
-    free(buf);
-    return send_sz;
+    // Set the footer area of the buffer.
+    NetFrameFooter *footer = (NetFrameFooter *)(buffer + sizeof(NetFrameHeader) + this->payload_size);
+    footer->crc2 = this->crc2;
+    footer->netstat = this->netstat;
+    footer->termination = termination;
+
+    // Set frame_size to malloc_size, the bytes allocated for the sendable buffer, to track how many bytes should send.
+    this->frame_size = malloc_size;
+
+    send_size = send(network_data->socket, buffer, malloc_size, 0);
+
+    free(buffer);
+
+    return send_size;
 }
 
 ssize_t NetFrame::recvFrame(NetData *network_data)
@@ -210,35 +249,45 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
         return -1;
     }
 
-    // verify GUID
-    NetFrameHeaderStruct frame_hdr;
-    int ofst = 0;
+    // Verify GUID.
+    NetFrameHeader header;
+    int offset = 0;
+
     do
     {
-        int sz = recv(network_data->socket, frame_hdr.bytes + ofst, 1, MSG_WAITALL);
+        int sz = recv(network_data->socket, header.bytes + offset, 1, MSG_WAITALL);
         if (sz < 0)
-            break; // connection broken
-        if ((sz == 1) && (frame_hdr.bytes[ofst] == (uint8_t)(NETFRAME_GUID >> (ofst * 8))))
-            ofst++;
+        {
+            // Connection broken.
+            break;
+        }
+        if ((sz == 1) && (header.bytes[offset] == (uint8_t)(NETFRAME_GUID >> (offset * 8))))
+        {
+            offset++;
+        }
         else
-            ofst = 0;
-    } while (ofst < sizeof(NETFRAME_GUID));
-    // receive rest of header
+        {
+            offset = 0;
+        }
+    } while (offset < sizeof(NETFRAME_GUID));
+
+    // Receive the rest of the header.
     do
     {
-        int sz = recv(network_data->socket, frame_hdr.bytes + ofst, sizeof(NetFrameHeaderStruct) - ofst, MSG_WAITALL);
+        int sz = recv(network_data->socket, header.bytes + offset, sizeof(NetFrameHeader) - offset, MSG_WAITALL);
         if (sz < 0)
             break;
-        ofst += sz;
-    } while (ofst < sizeof(NetFrameHeaderStruct));
-    if (ofst == sizeof(NetFrameHeaderStruct)) // success
+        offset += sz;
+    } while (offset < sizeof(NetFrameHeader));
+
+    if (offset == sizeof(NetFrameHeader)) // success
     {
-        this->guid = frame_hdr.guid;
-        this->type = (NetType)frame_hdr.type;
-        this->origin = (NetVertex)frame_hdr.origin;
-        this->destination = (NetVertex)frame_hdr.destination;
-        this->payload_size = frame_hdr.payload_size;
-        this->crc1 = frame_hdr.crc1;
+        this->guid = header.guid;
+        this->type = (NetType)header.type;
+        this->origin = (NetVertex)header.origin;
+        this->destination = (NetVertex)header.destination;
+        this->payload_size = header.payload_size;
+        this->crc1 = header.crc1;
         if ((payload_size >= 0) && (payload_size <= NETFRAME_MAX_PAYLOAD_SIZE))
         {
             this->payload = (uint8_t *)malloc(this->payload_size);
@@ -252,44 +301,58 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
     {
         return -1;
     }
+
     if (this->payload == nullptr)
     {
         return -3; // malloc failed
     }
-    ofst = 0;
+
+    offset = 0;
+
+    // Receive the payload.
     do
     {
-        int sz = recv(network_data->socket, this->payload + ofst, this->payload_size - ofst, MSG_WAITALL);
+        int sz = recv(network_data->socket, this->payload + offset, this->payload_size - offset, MSG_WAITALL);
         if (sz < 0)
         {
+            // Connection broken mid-receive-payload.
             free(this->payload);
-            return -4; // connection broken mid-receive-payload
+            return -4;
         }
-        ofst += sz;
-    } while (ofst < this->payload_size);
-    ofst = 0;
-    NetFrameFooterStruct frame_ftr;
+        offset += sz;
+    } while (offset < this->payload_size);
+
+    offset = 0;
+
+    NetFrameFooter footer;
+
+    // Receive the footer.
     do
     {
-        int sz = recv(network_data->socket, frame_ftr.bytes + ofst, sizeof(NetFrameFooterStruct) - ofst, MSG_WAITALL);
+        int sz = recv(network_data->socket, footer.bytes + offset, sizeof(NetFrameFooter) - offset, MSG_WAITALL);
         if (sz < 0)
         {
+            // Connection broken.
             free(this->payload);
-            return -4; // connection broken
+            return -4;
         }
-        ofst += sz;
-    } while (ofst < sizeof(NetFrameFooterStruct));
+        offset += sz;
+    } while (offset < sizeof(NetFrameFooter));
+
     // memcpy
-    if (ofst == sizeof(NetFrameFooterStruct))
+    if (offset == sizeof(NetFrameFooter))
     {
-        this->crc2 = frame_ftr.crc2;
-        this->netstat = frame_ftr.netstat;
-        this->termination = frame_ftr.termination;
+        this->crc2 = footer.crc2;
+        this->netstat = footer.netstat;
+        this->termination = footer.termination;
     }
+
+    // Validate the data we read as a valid NetFrame.
     if (this->validate())
     {
         return this->payload_size;
     }
+
     return -1;
 }
 

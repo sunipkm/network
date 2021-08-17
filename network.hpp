@@ -88,7 +88,15 @@ class NetFrame
 {
 public:
     /** CONSTRUCTOR
-     * @brief THROWS EXCEPTIONS. Construct a new NetworkFrame object
+     * @brief Creates a NetFrame for receiving via .recvFrame(...).
+     * 
+     * Payload size set to negative one to indicate that in its current state, this NetFrame cannot be sent. 
+     * 
+     */
+    NetFrame() : payload_size(-1), payload(nullptr) {}
+
+    /** CONSTRUCTOR
+     * @brief THROWS EXCEPTIONS. Creates a NetFrame for sending via .sendFrame(...).
      * 
      * @param payload 
      * @param size 
@@ -96,17 +104,13 @@ public:
      * @param dest 
      */
     NetFrame(unsigned char *payload, ssize_t size, NetType type, NetVertex destination);
-    NetFrame() : payload_size(0), payload(nullptr)
-    {
-
-    }
-    ~NetFrame()
-    {
-        if (payload != nullptr)
-            free(payload);
-        payload = nullptr;
-        payload_size = 0;
-    }
+    
+    /** DESTRUCTOR
+     * @brief Frees payload and zeroes payload size.
+     * 
+     */
+    ~NetFrame();
+    
     /**
      * @brief Copies payload to the passed space in memory.
      * 
@@ -117,17 +121,17 @@ public:
     int retrievePayload(unsigned char *storage, ssize_t capacity);
 
     /**
-     * @brief Sends itself using the network data passed to it.
+     * @brief Sends itself, frame must have been constructed using NetFrame(unsigned char *, ssize_t, NetType, NetVertex).
      * 
-     * @return ssize_t Negative on failure, 0 on success 
+     * @return ssize_t Zero on success, negative on failure. 
      */
     ssize_t sendFrame(NetData *network_data);
 
     /**
-     * @brief Receives data into a NetFrame
+     * @brief Receives data into a NetFrame constructed by NetFrame().
      * 
      * @param network_data Network Data struct 
-     * @return ssize_t Number of bytes received
+     * @return ssize_t Number of bytes received on success, negative on failure.
      */
     ssize_t recvFrame(NetData *network_data);
 
@@ -157,23 +161,24 @@ public:
      * 
      * @return ssize_t Frame size of sendFrame(), should be checked against the return value of sendFrame()
      */
-    ssize_t getFrameSize() {
-        return frame_sz;
-    }
+    ssize_t getFrameSize(){ return frame_size; }
     uint8_t getNetstat(){ return netstat; };
 
 private:
-    uint32_t guid;
-    NetType type;
-    NetVertex origin;
-    NetVertex destination;
-    int payload_size; // Cannot be ssize_t, since its 4 bytes on RPi and 8 on other machines.
-    uint16_t crc1;
-    unsigned char *payload;
-    uint16_t crc2;
-    uint8_t netstat;
-    uint16_t termination;
-    ssize_t frame_sz;
+    // Sendable Data
+    uint32_t guid;              // 0x4d454239
+    NetType type;               // 
+    NetVertex origin;           // Location the NetFrame was created.
+    NetVertex destination;      // Location the NetFrame is going.
+    int payload_size;           // Size, in bytes, of the stored payload. If -1, receive only.
+    uint16_t crc1;              // CRC16 of the stored payload, including zeroes.
+    unsigned char *payload;     // Dynamically sized payload, of capacity 0x100 to 0xfffe4 bytes.
+    uint16_t crc2;              // 
+    uint8_t netstat;            // 8-bit Network device connection indicator.
+    uint16_t termination;       // 0xAAAA
+
+    // Non-sendable Data (invisible to .sendFrame(...) and .recvFrame(...))
+    ssize_t frame_size;         // Set to the number of bytes that should have sent during the last .sendFrame(...).
 };
 
 typedef union
@@ -188,7 +193,7 @@ typedef union
         uint16_t crc1;
     };
     uint8_t bytes[22];
-} NetFrameHeaderStruct;
+} NetFrameHeader;
 
 typedef union
 {
@@ -199,7 +204,7 @@ typedef union
         uint16_t termination;
     };
     uint8_t bytes[5];
-} NetFrameFooterStruct;
+} NetFrameFooter;
 
 /**
  * @brief Periodically polls the Ground Station Network Server for its status.
