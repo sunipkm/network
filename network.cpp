@@ -127,27 +127,22 @@ NetFrame::NetFrame(unsigned char *payload, ssize_t size, NetType type, NetVertex
         throw std::invalid_argument("Payload size larger than 0xfffe4.");
     }
 
+    this->payload = (uint8_t *)malloc(payload_size);
+
+    if (this->payload == nullptr)
+    {
+        throw std::bad_alloc();
+    }
+
+    if (payload_size == NETFRAME_MIN_PAYLOAD_SIZE)
+    {
+        memset(this->payload, 0x0, NETFRAME_MIN_PAYLOAD_SIZE);
+    }
+
     // Check if payload is nullptr, and allocate memory if it is not.
     if (payload != nullptr && size > 0)
     {
-        this->payload = (uint8_t *)malloc(payload_size);
-        if (this->payload != nullptr)
-        {
-            if (payload_size == NETFRAME_MIN_PAYLOAD_SIZE)
-            {
-                memset(this->payload, 0x0, NETFRAME_MIN_PAYLOAD_SIZE);
-            }
-                
-            memcpy(this->payload, payload, payload_size);
-        }
-        else
-        {
-            throw std::bad_alloc();
-        }
-    }
-    else
-    {
-        this->payload = nullptr;
+        memcpy(this->payload, payload, payload_size);
     }
 
     crc1 = internal_crc16(this->payload, payload_size);
