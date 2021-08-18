@@ -419,7 +419,15 @@ void NetFrame::print()
     dbprintf("Payload ---- (HEX)");
     for (int i = 0; i < payload_size; i++)
     {
-        printf(" 0x%04x", payload[i]);
+        if ((i % 2) == 0)
+        {
+            printf(BLUE_FG "%02x" RESET_ALL, payload[i]);
+        }
+        else
+        {
+            printf("%02x", payload[i]);
+        }
+        
     }
     printf("\n");
     dbprintlf("CRC2 ------------ 0x%04x", crc2);
