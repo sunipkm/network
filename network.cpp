@@ -43,9 +43,9 @@ NetDataServer::NetDataServer(NetPort listening_port)
 
 NetFrame::NetFrame(unsigned char *payload, ssize_t size, NetType type, NetVertex destination) : payload(nullptr), payload_size(0)
 {
-    if (payload == NULL || size == 0 || type == NetType::POLL)
+    if (payload == nullptr || size == 0 || type == NetType::POLL)
     {
-        if (payload != NULL || size != 0 || type != NetType::POLL)
+        if (payload != nullptr || size != 0 || type != NetType::POLL)
         {
             dbprintlf(FATAL "Invalid combination of NULL payload, 0 size, and/or POLL NetType.");
             throw std::invalid_argument("Invalid combination of NULL payload, 0 size, and/or POLL NetType.");
@@ -114,7 +114,6 @@ NetFrame::NetFrame(unsigned char *payload, ssize_t size, NetType type, NetVertex
     dbprintlf(RED_FG "Or, in a Makefile: -DGSNID=\\\"guiclient\\\"");
     throw std::invalid_argument("GSNID not defined.");
 #endif
-
     guid = NETFRAME_GUID;
     this->type = type;
     this->destination = destination;
@@ -128,17 +127,29 @@ NetFrame::NetFrame(unsigned char *payload, ssize_t size, NetType type, NetVertex
         throw std::invalid_argument("Payload size larger than 0xfffe4.");
     }
 
-    this->payload = (uint8_t *)malloc(payload_size);
-    if (this->payload != nullptr)
+    // Check if payload is nullptr, and allocate memory if it is not.
+    if (payload != nullptr && size > 0)
     {
-        if (payload_size == NETFRAME_MIN_PAYLOAD_SIZE)
+        this->payload = (uint8_t *)malloc(payload_size);
+        if (this->payload != nullptr)
         {
-            memset(this->payload, 0x0, NETFRAME_MIN_PAYLOAD_SIZE);
+            if (payload_size == NETFRAME_MIN_PAYLOAD_SIZE)
+            {
+                memset(this->payload, 0x0, NETFRAME_MIN_PAYLOAD_SIZE);
+            }
+                
+            memcpy(this->payload, payload, payload_size);
         }
-            
-        memcpy(this->payload, payload, payload_size);
+        else
+        {
+            throw std::bad_alloc();
+        }
     }
-    
+    else
+    {
+        this->payload = nullptr;
+    }
+
     crc1 = internal_crc16(this->payload, payload_size);
     crc2 = internal_crc16(this->payload, payload_size);
     netstat = 0x0;
