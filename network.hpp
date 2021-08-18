@@ -148,6 +148,12 @@ public:
      */
     void print();
 
+    /**
+     * @brief Print network status.
+     * 
+     */
+    void printNetstat();
+
     // This exists because 'setting' is restrictive.
     int setNetstat(uint8_t netstat);
 

@@ -481,6 +481,21 @@ void NetFrame::print()
     dbprintlf("Termination ----- 0x%04x", termination);
 }
 
+void NetFrame::printNetstat()
+{
+    dbprintlf(BLUE_FG "NETWORK STATUS (%d)", netstat);
+    dbprintf("GUI Client ----- ");
+    ((netstat & 0x80) == 0x80) ? printf(GREEN_FG "ONLINE" RESET_ALL "\n") : printf(RED_FG "OFFLINE" RESET_ALL "\n");
+    dbprintf("Roof UHF ------- ");
+    ((netstat & 0x40) == 0x40) ? printf(GREEN_FG "ONLINE" RESET_ALL "\n") : printf(RED_FG "OFFLINE" RESET_ALL "\n");
+    dbprintf("Roof X-Band ---- ");
+    ((netstat & 0x20) == 0x20) ? printf(GREEN_FG "ONLINE" RESET_ALL "\n") : printf(RED_FG "OFFLINE" RESET_ALL "\n");
+    dbprintf("Haystack ------- ");
+    ((netstat & 0x10) == 0x10) ? printf(GREEN_FG "ONLINE" RESET_ALL "\n") : printf(RED_FG "OFFLINE" RESET_ALL "\n");
+    dbprintf("Track ---------- ");
+    ((netstat & 0x8) == 0x8) ? printf(GREEN_FG "ONLINE" RESET_ALL "\n") : printf(RED_FG "OFFLINE" RESET_ALL "\n");
+}
+
 int NetFrame::setNetstat(uint8_t netstat)
 {
 #ifdef GSNID
