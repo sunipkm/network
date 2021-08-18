@@ -118,8 +118,11 @@ NetFrame::NetFrame(unsigned char *payload, ssize_t size, NetType type, NetVertex
     this->type = type;
     this->destination = destination;
 
+    payload_size = size;
+
     // Enforces a minimum payload capacity, even if the payload size if less.
-    payload_size = size < NETFRAME_MIN_PAYLOAD_SIZE ? NETFRAME_MIN_PAYLOAD_SIZE : size;
+    // payload_size = size < NETFRAME_MIN_PAYLOAD_SIZE ? NETFRAME_MIN_PAYLOAD_SIZE : size;
+    size_t malloc_size = size < NETFRAME_MIN_PAYLOAD_SIZE ? NETFRAME_MIN_PAYLOAD_SIZE : size;
 
     // Payload too large error.
     if (payload_size > NETFRAME_MAX_PAYLOAD_SIZE)
@@ -127,14 +130,14 @@ NetFrame::NetFrame(unsigned char *payload, ssize_t size, NetType type, NetVertex
         throw std::invalid_argument("Payload size larger than 0xfffe4.");
     }
 
-    this->payload = (uint8_t *)malloc(payload_size);
+    this->payload = (uint8_t *)malloc(malloc_size);
 
     if (this->payload == nullptr)
     {
         throw std::bad_alloc();
     }
 
-    if (payload_size == NETFRAME_MIN_PAYLOAD_SIZE)
+    if (malloc_size == NETFRAME_MIN_PAYLOAD_SIZE)
     {
         memset(this->payload, 0x0, NETFRAME_MIN_PAYLOAD_SIZE);
     }
@@ -145,8 +148,8 @@ NetFrame::NetFrame(unsigned char *payload, ssize_t size, NetType type, NetVertex
         memcpy(this->payload, payload, payload_size);
     }
 
-    crc1 = internal_crc16(this->payload, payload_size);
-    crc2 = internal_crc16(this->payload, payload_size);
+    crc1 = internal_crc16(this->payload, malloc_size);
+    crc2 = crc1;
     netstat = 0x0;
     termination = 0xAAAA;
 }
@@ -198,9 +201,11 @@ ssize_t NetFrame::sendFrame(NetData *network_data)
         return -1;
     }
 
+    size_t payload_buffer_size = payload_size < NETFRAME_MIN_PAYLOAD_SIZE ? NETFRAME_MIN_PAYLOAD_SIZE : payload_size;
+
     ssize_t send_size = 0;
     uint8_t *buffer = nullptr;
-    ssize_t malloc_size = sizeof(NetFrameHeader) + this->payload_size + sizeof(NetFrameFooter);
+    ssize_t malloc_size = sizeof(NetFrameHeader) + payload_buffer_size + sizeof(NetFrameFooter);
     buffer = (uint8_t *)malloc(malloc_size);
 
     if (buffer == nullptr)
@@ -223,10 +228,10 @@ ssize_t NetFrame::sendFrame(NetData *network_data)
     header->crc1 = this->crc1;
 
     // Copy the payload into the buffer.
-    memcpy(buffer + sizeof(NetFrameHeader), this->payload, this->payload_size);
+    memcpy(buffer + sizeof(NetFrameHeader), this->payload, payload_buffer_size);
 
     // Set the footer area of the buffer.
-    NetFrameFooter *footer = (NetFrameFooter *)(buffer + sizeof(NetFrameHeader) + this->payload_size);
+    NetFrameFooter *footer = (NetFrameFooter *)(buffer + sizeof(NetFrameHeader) + payload_buffer_size);
     footer->crc2 = this->crc2;
     footer->netstat = this->netstat;
     footer->termination = termination;
@@ -258,6 +263,7 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
     // Verify GUID.
     NetFrameHeader header;
     int offset = 0;
+    int recv_attempts = 0;
 
     do
     {
@@ -266,6 +272,14 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
         {
             // Connection broken.
             break;
+        }
+        if (sz == 0)
+        {
+            recv_attempts++;
+            if (recv_attempts > 20)
+            {
+                return -404;
+            }
         }
         if ((sz == 1) && (header.bytes[offset] == (uint8_t)(NETFRAME_GUID >> (offset * 8))))
         {
@@ -277,14 +291,26 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
         }
     } while (offset < sizeof(NETFRAME_GUID));
 
+    recv_attempts = 0;
+
     // Receive the rest of the header.
     do
     {
         int sz = recv(network_data->socket, header.bytes + offset, sizeof(NetFrameHeader) - offset, MSG_WAITALL);
         if (sz < 0)
             break;
+        if (sz == 0)
+        {
+            recv_attempts++;
+            if (recv_attempts > 20)
+            {
+                return -404;
+            }
+        }
         offset += sz;
     } while (offset < sizeof(NetFrameHeader));
+
+    size_t payload_buffer_size = 0;
 
     if (offset == sizeof(NetFrameHeader)) // success
     {
@@ -294,9 +320,12 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
         this->destination = (NetVertex)header.destination;
         this->payload_size = header.payload_size;
         this->crc1 = header.crc1;
-        if ((payload_size >= 0) && (payload_size <= NETFRAME_MAX_PAYLOAD_SIZE))
+
+        payload_buffer_size = payload_size < NETFRAME_MIN_PAYLOAD_SIZE ? NETFRAME_MIN_PAYLOAD_SIZE : payload_size;
+
+        if (payload_buffer_size <= NETFRAME_MAX_PAYLOAD_SIZE)
         {
-            this->payload = (uint8_t *)malloc(this->payload_size);
+            this->payload = (uint8_t *)malloc(payload_buffer_size);
         }
         else
         {
@@ -315,22 +344,33 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
 
     offset = 0;
 
+    recv_attempts = 0;
+
     // Receive the payload.
     do
     {
-        int sz = recv(network_data->socket, this->payload + offset, this->payload_size - offset, MSG_WAITALL);
+        int sz = recv(network_data->socket, this->payload + offset, payload_buffer_size - offset, MSG_WAITALL);
         if (sz < 0)
         {
             // Connection broken mid-receive-payload.
-            free(this->payload);
             return -4;
         }
+        if (sz == 0)
+        {
+            recv_attempts++;
+            if (recv_attempts > 20)
+            {
+                return -404;
+            }
+        }
         offset += sz;
-    } while (offset < this->payload_size);
+    } while (offset < payload_buffer_size);
 
     offset = 0;
 
     NetFrameFooter footer;
+
+    recv_attempts = 0;
 
     // Receive the footer.
     do
@@ -339,8 +379,15 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
         if (sz < 0)
         {
             // Connection broken.
-            free(this->payload);
             return -4;
+        }
+        if (sz == 0)
+        {
+            recv_attempts++;
+            if (recv_attempts > 20)
+            {
+                return -404;
+            }
         }
         offset += sz;
     } while (offset < sizeof(NetFrameFooter));
@@ -427,7 +474,6 @@ void NetFrame::print()
         {
             printf("%02x", payload[i]);
         }
-        
     }
     printf("\n");
     dbprintlf("CRC2 ------------ 0x%04x", crc2);
