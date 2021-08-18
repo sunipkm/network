@@ -457,6 +457,7 @@ int NetFrame::validate()
 
 void NetFrame::print()
 {
+    dbprintlf(BLUE_FG "NETWORK FRAME");
     dbprintlf("GUID ------------ 0x%08x", guid);
     dbprintlf("Type ------------ %d", (int)type);
     dbprintlf("Destination ----- %d", (int)destination);
