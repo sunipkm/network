@@ -52,7 +52,7 @@ NetFrame::NetFrame(unsigned char *payload, ssize_t size, NetType type, NetVertex
         }
     }
 
-    if ((int)type < (int)NetType::POLL || (int)type > (int)NetType::TRACKING_DATA)
+    if ((int)type < (int)NetType::POLL || (int)type > (int)NetType::SW_UPDATE)
     {
         dbprintlf(FATAL "Invalid or unknown NetType.");
         throw std::invalid_argument("Invalid or unknown NetType.");
