@@ -415,7 +415,7 @@ int NetFrame::validate()
     {
         return -1;
     }
-    else if ((int)type < (int)NetType::POLL || (int)type > (int)NetType::TRACKING_DATA)
+    else if ((int)type < (int)NetType::POLL || (int)type > (int)NetType::SW_UPDATE)
     {
         return -2;
     }
