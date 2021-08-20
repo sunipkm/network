@@ -32,7 +32,8 @@ enum class NetType
     XBAND_COMMAND,
     XBAND_DATA,         // Automatically and periodically sent to the client.
     TRACKING_COMMAND,   
-    TRACKING_DATA       // Automatically and periodically send to the client.
+    TRACKING_DATA,       // Automatically and periodically send to the client.
+    SW_UPDATE
 };
 
 enum class NetVertex
