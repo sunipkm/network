@@ -20,22 +20,7 @@ int main(int argc, char *argv[])
     pthread_t poll_thread;
     std::cout << "Server vertex: " << conn->GetServerVertex() << std::endl;
     std::cout << "Client vertex: " << conn->GetVertex() << std::endl;
-    conn->recv_active = true;
-    NetFrame *frame = new NetFrame(NULL, 0, NetType::SSL_REQ, conn->GetServerVertex());
-    frame->sendFrame(conn);
-    delete frame;
-    frame = new NetFrame();
-    if (frame->recvFrame(conn) > 0)
-    {
-        dbprintlf("Received frame type: %d", (int)frame->getType());
-        if (frame->getType() == NetType::ACK)
-        {
-            NetType req;
-            frame->retrievePayload(&req, sizeof(NetType));
-            if (req == NetType::SSL_REQ)
-                conn->open_ssl_conn();
-        }
-    }
+    printf("SSL request %s\n", conn->RequestSSL() > 0 ? "granted" : "denied");
     if (pthread_create(&poll_thread, NULL, gs_polling_thread, conn) < 0)
     {
         std::cout << "pthread_create failed" << std::endl;

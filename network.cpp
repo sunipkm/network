@@ -31,7 +31,9 @@
 
 static int ssl_init = 0;
 
-static SSL_CTX *sslctx;
+static SSL_CTX *sslctx = NULL;
+
+// TODO: Generate key for SSL connection automatically
 
 void InitializeSSL()
 {
@@ -41,8 +43,10 @@ void InitializeSSL()
 
     sslctx = SSL_CTX_new(SSLv23_server_method());
     SSL_CTX_set_options(sslctx, SSL_OP_SINGLE_DH_USE);
-    int use_cert = SSL_CTX_use_certificate_file(sslctx, "./serverCertificate.pem", SSL_FILETYPE_PEM);
-    int use_prv = SSL_CTX_use_PrivateKey_file(sslctx, ".C/serverCertificate.pem", SSL_FILETYPE_PEM);
+    int use_cert = SSL_CTX_use_certificate_file(sslctx, "./cert.pem", SSL_FILETYPE_PEM);
+    int use_prv = SSL_CTX_use_PrivateKey_file(sslctx, "./key.pem", SSL_FILETYPE_PEM);
+    if (use_cert != 1 || use_prv != 1)
+        ssl_init = 0;
 }
 
 void DestroySSL()
@@ -571,7 +575,7 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
     if (this->getType() == NetType::SSL_REQ)
     {
         int ack_cmd = (int)NetType::SSL_REQ;
-        NetFrame *ackframe = new NetFrame(&ack_cmd, sizeof(int), NetType::ACK, network_data->origin);
+        NetFrame *ackframe = new NetFrame(&ack_cmd, sizeof(int), ssl_init ? NetType::ACK : NetType::NACK, network_data->origin);
         retval = ackframe->sendFrame(network_data);
         if (retval > 0)
         {
@@ -579,6 +583,21 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
         }
     }
 
+    return retval;
+}
+
+int NetData::RequestSSL()
+{
+    if (ssl_init == 0)
+    {
+        dbprintlf("Could not request SSL connection, SSL not initialized.\n");
+        return -1;
+    }
+    NetFrame *frame = new NetFrame(NULL, 0, NetType::SSL_REQ, origin);
+    int retval = frame->sendFrame(this);
+    delete frame;
+    frame = new NetFrame();
+    retval = frame->recvFrame(this);
     return retval;
 }
 
@@ -799,7 +818,7 @@ int gs_connect_to_server(NetDataClient *network_data)
         free(_network_data);
         delete frame;
     }
-
+    network_data->recv_active = true;
     return connect_status;
 }
 

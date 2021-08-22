@@ -26,7 +26,7 @@
 
 enum class NetType
 {
-    POLL = 0x1a, // Poll connectoion
+    POLL = 0x1a, // Poll connection
     ACK,         // acknowledge last transmission
     NACK,        // not-acknowledge last transmission
     DATA,        // data frame
@@ -51,6 +51,8 @@ public:
 
     int open_ssl_conn();
     void close_ssl_conn();
+
+    int RequestSSL();
 
     friend class NetFrame;
 
@@ -89,7 +91,7 @@ class NetClient : public NetData
 {
 public:
     ~NetClient();
-    
+
     int client_id;
     struct sockaddr_in client_addr;
     int client_addrlen = sizeof(client_addr);

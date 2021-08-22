@@ -1,13 +1,10 @@
 # Network
-SPACE-HAUC Ground Station common network files.
+Network interface around C sockets and OpenSSL in C++.
 
 ## Sending Data (Client)
 ```c
-// Initialize a client's NetData object, giving the port and polling rate in seconds.
-NetDataClient *network_data = new NetDataClient(NetPort::CLIENT, SERVER_POLLING_RATE);
-
-// Set network receive to true.
-network_data->recv_active = true;
+// Initialize a client's NetData object, giving the IP of the server, the port and polling rate in seconds.
+NetDataClient *network_data = new NetDataClient("127.0.0.1", 52000, 1);
 
 ...
 
@@ -21,15 +18,14 @@ unsigned char buffer[DATA_SIZE];
 
 ...
 
-// Initialize a NetFrame object, send the frame, and clean up afterwards.
-NetFrame *network_frame = new NetFrame(buffer, DATA_SIZE, NetType::DATA, NetVertex::SERVER);
+// Initialize a NetFrame object with data to send, set packet size appropriately and set destination to server vertex, send the frame, and clean up afterwards.
+NetFrame *network_frame = new NetFrame(buffer, DATA_SIZE, NetType::DATA, network_data->GetServerVertex());
 network_frame->sendFrame(network_data);
 delete network_frame;
 ```
 ## Receiving Data (Client)
 ```c
-NetDataClient *network_data = new NetDataClient(NetPort::CLIENT, SERVER_POLLING_RATE);
-network_data->recv_active = true;
+NetDataClient *network_data = new NetDataClient("127.0.0.1", 52000, 1);
 
 ...
 
@@ -52,17 +48,8 @@ free(buffer);
 ```
 ## Sending Data (Server)
 ```c
-// Initialize a server's NetData object, giving the port to listen on.
-NetDataServer *network_data = new NetDataClient(NetPort::CLIENT);
-
-// Set network receive to true.
-network_data->recv_active = true;
-
-...
-
-// Set the socket integer value and, if the connection is open, set connection_ready to true.
-network_data->socket = accept(listening_socket, (struct sockaddr *)&accepted_address, (socklen_t *)&socket_size);
-network_data->connection_ready = true;
+// Initialize a server's NetData object, giving the port to listen on and how many active connections to expect.
+NetDataServer *network_data = new NetDataServer(52000, 5);
 
 ...
 
@@ -71,20 +58,14 @@ unsigned char buffer[DATA_SIZE];
 
 ...
 
-// Initialize a NetFrame object, send the frame, and clean up afterwards.
-NetFrame *network_frame = new NetFrame(buffer, DATA_SIZE, NetType::DATA, NetVertex::CLIENT);
+// Initialize a NetFrame object, set destination to specific client ID, send the frame, and clean up afterwards.
+NetFrame *network_frame = new NetFrame(buffer, DATA_SIZE, NetType::DATA, network_data->GetClient(id));
 network_frame->sendFrame(network_data);
 delete network_frame;
 ```
 ## Receiving Data (Server)
 ```c
-NetDataServer *network_data = new NetDataClient(NetPort::CLIENT);
-network_data->recv_active = true;
-
-...
-
-network_data->socket = accept(listening_socket, (struct sockaddr *)&accepted_address, (socklen_t *)&socket_size);
-network_data->connection_ready = true;
+NetDataServer *network_data = new NetDataServer(52000, 5);
 
 ...
 
@@ -98,44 +79,18 @@ unsigned char *buffer = (unsigned char *)malloc(buffer_size);
 network_frame->retrievePayload(buffer, buffer_size);
 ```
 ## NetType
-_What type of data is contained within this packet's payload?_
+_Generic packet types._
 ```c
 enum class NetType
 {
-    POLL,               // Sent to the server periodically.
-    ACK,
-    NACK,
-    DATA,               // To/from SPACE-HAUC
-    UHF_CONFIG,         // Sets UHF's configuration.
-    XBAND_CONFIG,       // Sets X-Band's configuration.
-    XBAND_COMMAND,
-    XBAND_DATA,         // Automatically and periodically sent to the client.
-    TRACKING_COMMAND,   
-    TRACKING_DATA       // Automatically and periodically send to the client.
+    POLL = 0x1a, // Poll connection
+    ACK,         // acknowledge last transmission
+    NACK,        // not-acknowledge last transmission
+    DATA,        // data frame
+    CMD,         // command frame
+    SRV,         // server connection acknowledgement frame
+    SSL_REQ,     // request for SSL connection
 };
 ```
 ## NetVertex
-_A point within the Ground Station Network._
-```c
-enum class NetVertex
-{
-    CLIENT,
-    ROOFUHF,
-    ROOFXBAND,
-    HAYSTACK,
-    SERVER,
-    TRACK
-};
-```
-## NetPorts
-_Ground Station Network device-specific ports._
-```c
-enum class NetPort
-{
-    CLIENT = 54200,
-    ROOFUHF = 54210,
-    ROOFXBAND = 54220,
-    HAYSTACK = 54230,
-    TRACK = 54240
-};
-```
+_A point within the network._
