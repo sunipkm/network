@@ -17,6 +17,10 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <new>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <time.h>
+#include <assert.h>
 #include "network.hpp"
 #include "meb_debug.hpp"
 
@@ -35,13 +39,106 @@ NetDataClient::NetDataClient(const char *ip_addr, NetPort server_port, int polli
     server_ip->sin_port = htons((int)server_port);
 };
 
-NetDataServer::NetDataServer(NetPort listening_port)
+NetDataServer::NetDataServer(NetPort listening_port, int clients)
     : NetData()
 {
-    this->listening_port = (int)listening_port;
+    srand(time(NULL));
+    origin = rand();
+    if (clients < 1)
+        clients = 1;
+    else if (clients > 100)
+        clients = 100;
+
+    if ((fd = socket(AF_INET, SOCK_STREAM, 0)) < 3)
+    {
+        dbprintlf("Socket creation failed");
+        throw std::bad_alloc();
+    }
+    int opt = 1;
+    // Forcefully attaching socket to the port 8080
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
+                   &opt, sizeof(opt)))
+    {
+        dbprintlf("setsockopt reuseaddr");
+        throw std::invalid_argument("setsockopt reuseaddr");
+    }
+
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT,
+                   &opt, sizeof(opt)))
+    {
+        dbprintlf("setsockopt reuseport");
+        throw std::invalid_argument("setsockopt reuseport");
+    }
+
+    int flags = fcntl(fd, F_GETFL, 0);
+    assert(flags != -1);
+    fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+
+    // Forcefully attaching socket to the port 8080
+    struct sockaddr_in address;
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(listening_port);
+
+    if (bind(fd, (struct sockaddr *)&address,
+             sizeof(address)) < 0)
+    {
+        dbprintlf("bind failed");
+        throw std::invalid_argument("bind failed");
+    }
+    if (listen(fd, clients) < 0)
+    {
+        dbprintlf("listen");
+        throw std::invalid_argument("listen");
+    }
+
+    this->num_clients = clients;
+    this->clients = new NetClient[clients];
+
+    if (this->clients == nullptr)
+    {
+        dbprintlf("Could not allocate memory for clients");
+        throw std::bad_alloc();
+    }
+
+    for (int i = 0; i < clients; i++)
+    {
+        this->clients[i].client_id = i;
+    }
+
+    if (pthread_create(&accept_thread, NULL, gs_accept_thread, this) != 0)
+    {
+        dbprintlf("Could not start accept thread");
+    }
 };
 
-NetFrame::NetFrame(unsigned char *payload, ssize_t size, NetType type, NetVertex destination) : payload(nullptr)
+NetClient *NetDataServer::GetClient(int id)
+{
+    if (id >= num_clients)
+    {
+        dbprintlf("Invalid client ID %d, max client ID %d", id, num_clients - 1);
+        return NULL;
+    }
+    return &(clients[id]);
+}
+
+NetDataServer::~NetDataServer()
+{
+    pthread_cancel(accept_thread);
+
+    if (fd > 0)
+    {
+        close(fd);
+        fd = -1;
+    }
+
+    if (clients != nullptr)
+        delete clients;
+    clients = nullptr;
+    num_clients = 0;
+}
+
+NetFrame::NetFrame(void *payload, ssize_t size, NetType type, NetVertex destination) : payload(nullptr)
 {
     hdr->payload_size = -1;
     if (payload == nullptr || size == 0 || type == NetType::POLL)
@@ -104,6 +201,8 @@ NetFrame::~NetFrame()
     if (payload != nullptr)
         free(payload);
     payload = nullptr;
+    memset(hdr, 0x0, sizeof(NetFrameHeader));
+    memset(ftr, 0x0, sizeof(NetFrameFooter));
     hdr->payload_size = -1;
 }
 
@@ -128,9 +227,9 @@ ssize_t NetFrame::sendFrame(NetData *network_data)
         return -1;
     }
 
-    if (network_data->socket < 0)
+    if (network_data->_socket < 0)
     {
-        dbprintlf(RED_FG "Invalid socket (%d).", network_data->socket);
+        dbprintlf(RED_FG "Invalid socket (%d).", network_data->_socket);
         return -1;
     }
 
@@ -162,7 +261,7 @@ ssize_t NetFrame::sendFrame(NetData *network_data)
     // 1. Header
     // 2. Payload
     // 3. Footer
-
+    this->hdr->origin = network_data->origin;
     // Set the header area of the buffer.
     memcpy(buffer, this->hdr, sizeof(NetFrameHeader));
 
@@ -175,14 +274,22 @@ ssize_t NetFrame::sendFrame(NetData *network_data)
     // Set frame_size to malloc_size, the bytes allocated for the sendable buffer, to track how many bytes should send.
     this->frame_size = malloc_size;
 
-    send_size = send(network_data->socket, buffer, malloc_size, 0);
+    send_size = send(network_data->_socket, buffer, malloc_size, MSG_NOSIGNAL);
+
+    if (send_size < 0)
+    {
+        dbprintlf("Connection closed by server/client\n");
+        network_data->connection_ready = false;
+        close(network_data->_socket);
+        network_data->_socket = -1;
+    }
 
     free(buffer);
 
     return send_size;
 }
 
-ssize_t NetFrame::recvFrame(NetData *network_data)
+ssize_t NetFrame::recvFrame(const NetData *network_data)
 {
     if (!(network_data->connection_ready))
     {
@@ -190,9 +297,9 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
         return -1;
     }
 
-    if (network_data->socket < 0)
+    if (network_data->_socket < 0)
     {
-        dbprintlf(RED_FG "Invalid socket (%d).", network_data->socket);
+        dbprintlf(RED_FG "Invalid socket (%d).", network_data->_socket);
         return -1;
     }
 
@@ -203,7 +310,7 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
 
     do
     {
-        int sz = recv(network_data->socket, header.bytes + offset, 1, MSG_WAITALL);
+        int sz = recv(network_data->_socket, header.bytes + offset, 1, MSG_WAITALL);
         if (sz < 0)
         {
             // Connection broken.
@@ -232,7 +339,7 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
     // Receive the rest of the header.
     do
     {
-        int sz = recv(network_data->socket, header.bytes + offset, sizeof(NetFrameHeader) - offset, MSG_WAITALL);
+        int sz = recv(network_data->_socket, header.bytes + offset, sizeof(NetFrameHeader) - offset, MSG_WAITALL);
         if (sz < 0)
             break;
         if (sz == 0)
@@ -285,7 +392,7 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
     // Receive the payload.
     do
     {
-        int sz = recv(network_data->socket, this->payload + offset, payload_buffer_size - offset, MSG_WAITALL);
+        int sz = recv(network_data->_socket, this->payload + offset, payload_buffer_size - offset, MSG_WAITALL);
         if (sz < 0)
         {
             // Connection broken mid-receive-payload.
@@ -311,7 +418,7 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
     // Receive the footer.
     do
     {
-        int sz = recv(network_data->socket, footer.bytes + offset, sizeof(NetFrameFooter) - offset, MSG_WAITALL);
+        int sz = recv(network_data->_socket, footer.bytes + offset, sizeof(NetFrameFooter) - offset, MSG_WAITALL);
         if (sz < 0)
         {
             // Connection broken.
@@ -339,7 +446,7 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
     // Validate the data we read as a valid NetFrame.
     if (this->validate())
     {
-        return hdr->payload_size;
+        return hdr->payload_size + sizeof(NetFrameFooter) + sizeof(NetFrameHeader);
     }
 
     return -1;
@@ -407,6 +514,8 @@ void NetFrame::print()
     dbprintlf("CRC2 ------------ 0x%04x", ftr->crc2);
     dbprintlf("NetStat --------- 0x%x", ftr->netstat);
     dbprintlf("Termination ----- 0x%04x", ftr->termination);
+    printf("\n");
+    
 }
 
 void NetFrame::printNetstat()
@@ -461,14 +570,18 @@ void *gs_polling_thread(void *args)
         if (network_data->connection_ready)
         {
             NetFrame *polling_frame = new NetFrame(NULL, 0, NetType::POLL, network_data->server_vertex);
+            polling_frame->print();
             polling_frame->sendFrame(network_data);
             delete polling_frame;
         }
         else
         {
+            dbprintlf("Connect to server from poll\n");
             gs_connect_to_server(network_data);
         }
-        usleep(network_data->polling_rate * 1000000);
+        if (network_data->polling_rate < 1000)
+            network_data->polling_rate = 1000; // minimum 1 ms
+        usleep(network_data->polling_rate * 1000);
     }
 
     dbprintlf(FATAL "GS_POLLING_THREAD IS EXITING!");
@@ -479,6 +592,20 @@ void *gs_polling_thread(void *args)
     return nullptr;
 }
 
+void *gs_accept_thread(void *args)
+{
+    NetDataServer *serv = (NetDataServer *)args;
+    while (!serv->listen_done)
+    {
+        for (int i = 0; i < serv->num_clients; i++)
+        {
+            gs_accept(serv, i);
+        }
+        sleep(1);
+    }
+    return NULL;
+}
+
 int gs_connect_to_server(NetDataClient *network_data)
 {
     int connect_status = -1;
@@ -487,7 +614,7 @@ int gs_connect_to_server(NetDataClient *network_data)
 
     // This is already done when initializing network_data.
     // network_data->serv_ip->sin_port = htons(server_port);
-    if ((network_data->socket = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+    if ((network_data->_socket = socket(AF_INET, SOCK_STREAM, 0)) < 0)
     {
         dbprintlf(RED_FG "Socket creation error.");
         connect_status = -1;
@@ -497,7 +624,7 @@ int gs_connect_to_server(NetDataClient *network_data)
         dbprintlf(RED_FG "Invalid address; address not supported.");
         connect_status = -2;
     }
-    else if (gs_connect(network_data->socket, (struct sockaddr *)network_data->server_ip, sizeof(network_data->server_ip), 1) < 0)
+    else if (gs_connect(network_data->_socket, (struct sockaddr *)network_data->server_ip, sizeof(network_data->server_ip), 1) < 0)
     {
         dbprintlf(RED_FG "Connection failure.");
         connect_status = -3;
@@ -509,7 +636,7 @@ int gs_connect_to_server(NetDataClient *network_data)
         struct timeval timeout;
         timeout.tv_sec = RECV_TIMEOUT;
         timeout.tv_usec = 0;
-        setsockopt(network_data->socket, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof timeout); // connection timeout set
+        setsockopt(network_data->_socket, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof timeout); // connection timeout set
         // Receive server acknowledgement
         NetFrame *frame = new NetFrame();
         NetDataClient *_network_data = (NetDataClient *)malloc(sizeof(NetDataClient));
@@ -525,7 +652,7 @@ int gs_connect_to_server(NetDataClient *network_data)
             dbprintlf("Server did not reply with an SRV type packet, reply type %d", frame->getType());
             connect_status = -5;
         }
-        else if (connect_status != 2 * sizeof(NetVertex))
+        else if (frame->getPayloadSize() != 2 * sizeof(NetVertex))
         {
             dbprintlf("Server reply payload size mismatch");
             frame->print();
@@ -535,7 +662,7 @@ int gs_connect_to_server(NetDataClient *network_data)
         {
             NetVertex vertices[2];
             frame->retrievePayload(vertices, 2 * sizeof(NetVertex));
-            network_data->vertex = vertices[0];
+            network_data->origin = vertices[0];
             network_data->server_vertex = vertices[1];
             network_data->connection_ready = true;
             connect_status = 1;
@@ -547,7 +674,44 @@ int gs_connect_to_server(NetDataClient *network_data)
     return connect_status;
 }
 
-// TODO: gs_accept()
+int gs_accept(NetDataServer *serv, int client_id)
+{
+    if (client_id >= serv->num_clients)
+    {
+        dbprintlf("Invalid client ID, max clients %d", serv->num_clients);
+        return -1;
+    }
+    NetClient *client = &(serv->clients[client_id]);
+    if (client->connection_ready)
+    {
+        return client->_socket;
+    }
+    if (client->_socket <= 0) // not connected
+    {
+        client->client_addrlen = sizeof(struct sockaddr_in);
+        client->_socket = accept(serv->fd, (struct sockaddr *)&(client->client_addr), (socklen_t *) &(client->client_addrlen));
+    }
+    if (client->_socket <= 0) // connection attempt unsuccessful
+        return client->_socket;
+
+    client->connection_ready = true;
+    NetVertex vertices[2];
+    vertices[0] = rand();
+    vertices[1] = serv->origin;
+    NetFrame *frame = new NetFrame((void *)vertices, sizeof(vertices), NetType::SRV, vertices[0]);
+
+    int bytes = frame->sendFrame(client);
+
+    if (bytes <= 0)
+    {
+        dbprintlf("Cound not send vertex identifiers, closing connection");
+        client->connection_ready = false;
+        close(client->_socket);
+        client->_socket = -1;
+    }
+
+    return client->_socket;
+}
 
 int gs_connect(int socket, const struct sockaddr *address, socklen_t socket_size, int tout_s)
 {

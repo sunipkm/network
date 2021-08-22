@@ -14,6 +14,7 @@
 
 #include <arpa/inet.h>
 #include <stdint.h>
+#include <pthread.h>
 
 #define SERVER_POLL_RATE 5
 #define RECV_TIMEOUT 15
@@ -40,10 +41,11 @@ typedef uint16_t NetPort;
 class NetData
 {
 public:
-    int socket = -1;
+    int _socket = -1;
     bool connection_ready = false;
     bool recv_active;
     int thread_status;
+    NetVertex origin;
 
 protected:
     NetData() {};
@@ -53,7 +55,6 @@ class NetDataClient : public NetData
 {
 private:
     char ip_addr[16];
-    NetVertex vertex;
     NetVertex server_vertex;
     struct sockaddr_in server_ip[1];
     char disconnect_reason[64];
@@ -61,21 +62,49 @@ public:
     NetDataClient(const char *ip_addr, NetPort server_port, int polling_rate);
     const char *GetIP() const {return ip_addr;}
     const char *GetDisconnectReason() const {return disconnect_reason;};
-    NetVertex GetVertex() const {return vertex;};
+    NetVertex GetVertex() const {return origin;}
+    NetVertex GetServerVertex() const {return server_vertex;}
 
     friend int gs_connect_to_server(NetDataClient *network_data);
     friend void *gs_polling_thread(void *);
 
 public:
-    int polling_rate; // POLL frame sent to the server every this-many seconds.
+    int polling_rate = 1000; // POLL frame sent to the server every this-many milliseconds.
+};
+
+class NetClient : public NetData
+{
+public:
+    int client_id;
+    struct sockaddr_in client_addr;
+    int client_addrlen = sizeof(client_addr);
 };
 
 class NetDataServer : public NetData
 {
+private:
+    NetClient *clients = nullptr;
+    int num_clients;
+    int fd;
+    bool listen_done = false;
+    pthread_t accept_thread;
+    friend void *gs_accept_thread(void *);
 public:
-    NetDataServer(NetPort listening_port);
+    NetDataServer(NetPort listening_port, int clients);
+    ~NetDataServer();
+    /**
+     * @brief Stop accepting new connections
+     * 
+     */
+    void StopAccept() {listen_done = true;};
+    /**
+     * @brief Get the number of clients supported
+     * @return int 
+     */
+    int GetNumClients() {return num_clients;};
+    NetClient *GetClient(int id);
 
-    int listening_port;
+    friend int gs_accept(NetDataServer *, int);
 };
 
 typedef union
@@ -83,9 +112,9 @@ typedef union
     struct __attribute__((packed))
     {
         uint32_t guid;
-        uint32_t type;
-        uint32_t origin;
-        uint32_t destination;
+        int32_t type;
+        int32_t origin;
+        int32_t destination;
         int32_t payload_size;
         uint16_t crc1;
     };
@@ -125,7 +154,7 @@ public:
      * @param type 
      * @param dest 
      */
-    NetFrame(unsigned char *payload, ssize_t size, NetType type, NetVertex destination);
+    NetFrame(void *payload, ssize_t size, NetType type, NetVertex destination);
 
     /** DESTRUCTOR
      * @brief Frees payload and zeroes payload size.
@@ -155,7 +184,7 @@ public:
      * @param network_data Network Data struct 
      * @return ssize_t Number of bytes received on success, negative on failure.
      */
-    ssize_t recvFrame(NetData *network_data);
+    ssize_t recvFrame(const NetData *network_data);
 
     /**
      * @brief Checks the validity of itself.
@@ -211,6 +240,8 @@ private:
  * @return void* 
  */
 void *gs_polling_thread(void *args);
+
+void *gs_accept_thread(void *args);
 
 /**
  * @brief 
