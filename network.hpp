@@ -13,68 +13,61 @@
 #define NETWORK_HPP
 
 #include <arpa/inet.h>
+#include <stdint.h>
 
 #define SERVER_POLL_RATE 5
 #define RECV_TIMEOUT 15
 #define NETFRAME_GUID 0x4d454239
 #define NETFRAME_MIN_PAYLOAD_SIZE 0x100
-#define NETFRAME_MAX_PAYLOAD_SIZE 0xfffe4 
-#define SERVER_IP "129.63.134.29"
+#define NETFRAME_MAX_PAYLOAD_SIZE 0xfffe4
+#define NETFRAME_TERMINATOR 0xa5a5
 
 enum class NetType
 {
-    POLL,               // Sent to the server periodically.
-    ACK,
-    NACK,
-    DATA,               // To/from SPACE-HAUC
-    UHF_CONFIG,         // Sets UHF's configuration.
-    XBAND_CONFIG,       // Sets X-Band's configuration.
-    XBAND_COMMAND,
-    XBAND_DATA,         // Automatically and periodically sent to the client.
-    TRACKING_COMMAND,   
-    TRACKING_DATA,       // Automatically and periodically send to the client.
-    SW_UPDATE
+    POLL = 0x1a, // Poll connectoion
+    ACK,         // acknowledge last transmission
+    NACK,        // not-acknowledge last transmission
+    DATA,        // data frame
+    CMD,         // command frame
+    SRV,         // server connection acknowledgement frame
+    MAX          // Last element
 };
 
-enum class NetVertex
-{
-    CLIENT,
-    ROOFUHF,
-    ROOFXBAND,
-    HAYSTACK,
-    SERVER,
-    TRACK
-};
+typedef int32_t NetVertex;
 
-enum class NetPort
-{
-    CLIENT = 54200,
-    ROOFUHF = 54210,
-    ROOFXBAND = 54220,
-    HAYSTACK = 54230,
-    TRACK = 54240
-};
+typedef uint16_t NetPort;
 
 class NetData
 {
 public:
-    int socket;
-    bool connection_ready;
+    int socket = -1;
+    bool connection_ready = false;
     bool recv_active;
     int thread_status;
 
 protected:
-    NetData();
+    NetData() {};
 };
 
 class NetDataClient : public NetData
 {
-public:
-    NetDataClient(NetPort server_port, int polling_rate);
-
-    int polling_rate; // POLL frame sent to the server every this-many seconds.
-    char disconnect_reason[64];
+private:
+    char ip_addr[16];
+    NetVertex vertex;
+    NetVertex server_vertex;
     struct sockaddr_in server_ip[1];
+    char disconnect_reason[64];
+public:
+    NetDataClient(const char *ip_addr, NetPort server_port, int polling_rate);
+    const char *GetIP() const {return ip_addr;}
+    const char *GetDisconnectReason() const {return disconnect_reason;};
+    NetVertex GetVertex() const {return vertex;};
+
+    friend int gs_connect_to_server(NetDataClient *network_data);
+    friend void *gs_polling_thread(void *);
+
+public:
+    int polling_rate; // POLL frame sent to the server every this-many seconds.
 };
 
 class NetDataServer : public NetData
@@ -85,6 +78,31 @@ public:
     int listening_port;
 };
 
+typedef union
+{
+    struct __attribute__((packed))
+    {
+        uint32_t guid;
+        uint32_t type;
+        uint32_t origin;
+        uint32_t destination;
+        int32_t payload_size;
+        uint16_t crc1;
+    };
+    uint8_t bytes[22];
+} NetFrameHeader;
+
+typedef union
+{
+    struct __attribute__((packed))
+    {
+        uint16_t crc2;
+        uint8_t netstat;
+        uint16_t termination;
+    };
+    uint8_t bytes[5];
+} NetFrameFooter;
+
 class NetFrame
 {
 public:
@@ -94,7 +112,10 @@ public:
      * Payload size set to negative one to indicate that in its current state, this NetFrame cannot be sent. 
      * 
      */
-    NetFrame() : payload_size(-1), payload(nullptr) {}
+    NetFrame() : payload(nullptr)
+    {
+        hdr->payload_size = -1;
+    }
 
     /** CONSTRUCTOR
      * @brief THROWS EXCEPTIONS. Creates a NetFrame for sending via .sendFrame(...).
@@ -105,13 +126,13 @@ public:
      * @param dest 
      */
     NetFrame(unsigned char *payload, ssize_t size, NetType type, NetVertex destination);
-    
+
     /** DESTRUCTOR
      * @brief Frees payload and zeroes payload size.
      * 
      */
     ~NetFrame();
-    
+
     /**
      * @brief Copies payload to the passed space in memory.
      * 
@@ -119,7 +140,7 @@ public:
      * @param capacity The size of the memory space being passed.
      * @return int Positive on success, negative on failure.
      */
-    int retrievePayload(unsigned char *storage, ssize_t capacity);
+    int retrievePayload(void *storage, ssize_t capacity);
 
     /**
      * @brief Sends itself, frame must have been constructed using NetFrame(unsigned char *, ssize_t, NetType, NetVertex).
@@ -159,59 +180,27 @@ public:
     int setNetstat(uint8_t netstat);
 
     // These exist because 'setting' is restrictive.
-    NetType getType(){ return type; };
-    NetVertex getOrigin(){ return origin; };
-    NetVertex getDestination(){ return destination; };
-    int getPayloadSize(){ return payload_size; };
+    NetType getType() { return (NetType)hdr->type; };
+    NetVertex getOrigin() { return hdr->origin; };
+    NetVertex getDestination() { return hdr->destination; };
+    int getPayloadSize() { return hdr->payload_size; };
     /**
      * @brief Get the Frame Size of the NetFrame (applicable only for sendFrame())
      * 
      * @return ssize_t Frame size of sendFrame(), should be checked against the return value of sendFrame()
      */
-    ssize_t getFrameSize(){ return frame_size; }
-    uint8_t getNetstat(){ return netstat; };
+    ssize_t getFrameSize() { return frame_size; }
+    uint8_t getNetstat() { return ftr->netstat; };
 
 private:
     // Sendable Data
-    uint32_t guid;              // 0x4d454239
-    NetType type;               // 
-    NetVertex origin;           // Location the NetFrame was created.
-    NetVertex destination;      // Location the NetFrame is going.
-    int payload_size;           // Size, in bytes, of the stored payload. If -1, receive only.
-    uint16_t crc1;              // CRC16 of the stored payload, including zeroes.
-    unsigned char *payload;     // Dynamically sized payload, of capacity 0x100 to 0xfffe4 bytes.
-    uint16_t crc2;              // 
-    uint8_t netstat;            // 8-bit Network device connection indicator.
-    uint16_t termination;       // 0xAAAA
+    NetFrameHeader hdr[1];
+    unsigned char *payload; // Dynamically sized payload, of capacity 0x100 to 0xfffe4 bytes.
+    NetFrameFooter ftr[1];
 
     // Non-sendable Data (invisible to .sendFrame(...) and .recvFrame(...))
-    ssize_t frame_size;         // Set to the number of bytes that should have sent during the last .sendFrame(...).
+    ssize_t frame_size; // Set to the number of bytes that should have sent during the last .sendFrame(...).
 };
-
-typedef union
-{
-    struct __attribute__((packed))
-    {
-        uint32_t guid;
-        uint32_t type;
-        uint32_t origin;
-        uint32_t destination;
-        uint32_t payload_size;
-        uint16_t crc1;
-    };
-    uint8_t bytes[22];
-} NetFrameHeader;
-
-typedef union
-{
-    struct __attribute__((packed))
-    {
-        uint16_t crc2;
-        uint8_t netstat;
-        uint16_t termination;
-    };
-    uint8_t bytes[5];
-} NetFrameFooter;
 
 /**
  * @brief Periodically polls the Ground Station Network Server for its status.

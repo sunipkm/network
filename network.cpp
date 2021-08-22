@@ -16,19 +16,19 @@
 #include <unistd.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <new>
 #include "network.hpp"
 #include "meb_debug.hpp"
 
-NetData::NetData()
-{
-    connection_ready = false;
-    socket = -1;
-};
-
-NetDataClient::NetDataClient(NetPort server_port, int polling_rate)
+NetDataClient::NetDataClient(const char *ip_addr, NetPort server_port, int polling_rate)
     : NetData()
 {
-    ;
+    if (ip_addr == NULL)
+        strcpy(this->ip_addr, "127.0.0.1");
+    else
+    {
+        strncpy(this->ip_addr, ip_addr, sizeof(this->ip_addr));
+    }
     this->polling_rate = polling_rate;
     strcpy(disconnect_reason, "N/A");
     server_ip->sin_family = AF_INET;
@@ -41,8 +41,9 @@ NetDataServer::NetDataServer(NetPort listening_port)
     this->listening_port = (int)listening_port;
 };
 
-NetFrame::NetFrame(unsigned char *payload, ssize_t size, NetType type, NetVertex destination) : payload(nullptr), payload_size(0)
+NetFrame::NetFrame(unsigned char *payload, ssize_t size, NetType type, NetVertex destination) : payload(nullptr)
 {
+    hdr->payload_size = -1;
     if (payload == nullptr || size == 0 || type == NetType::POLL)
     {
         if (payload != nullptr || size != 0 || type != NetType::POLL)
@@ -52,80 +53,24 @@ NetFrame::NetFrame(unsigned char *payload, ssize_t size, NetType type, NetVertex
         }
     }
 
-    if ((int)type < (int)NetType::POLL || (int)type > (int)NetType::SW_UPDATE)
+    if ((int)type < (int)NetType::POLL || (int)type > (int)NetType::MAX)
     {
         dbprintlf(FATAL "Invalid or unknown NetType.");
         throw std::invalid_argument("Invalid or unknown NetType.");
     }
 
-    if ((int)destination < (int)NetVertex::CLIENT || (int)destination > (int)NetVertex::SERVER)
-    {
-        dbprintlf("Invalid or unknown NetVertex.");
-        throw std::invalid_argument("Invalid or unknown NetVertex.");
-    }
+    hdr->guid = NETFRAME_GUID;
+    hdr->type = (int)type;
+    hdr->destination = destination;
 
-    // Figure out origin for ourselves.
-#ifdef GSNID
-    if (strcmp(GSNID, "guiclient") == 0)
-    {
-        origin = NetVertex::CLIENT;
-    }
-    else if (strcmp(GSNID, "server") == 0)
-    {
-        origin = NetVertex::SERVER;
-    }
-    else if (strcmp(GSNID, "roofuhf") == 0)
-    {
-        origin = NetVertex::ROOFUHF;
-    }
-    else if (strcmp(GSNID, "roofxband") == 0)
-    {
-        origin = NetVertex::ROOFXBAND;
-    }
-    else if (strcmp(GSNID, "haystack") == 0)
-    {
-        origin = NetVertex::HAYSTACK;
-    }
-    else if (strcmp(GSNID, "track") == 0)
-    {
-        origin = NetVertex::TRACK;
-    }
-    else
-    {
-        dbprintlf(FATAL "GSNID not recognized. Please ensure one of the following exists:");
-        dbprintlf(RED_FG "#define GSNID \"guiclient\"");
-        dbprintlf(RED_FG "#define GSNID \"server\"");
-        dbprintlf(RED_FG "#define GSNID \"roofuhf\"");
-        dbprintlf(RED_FG "#define GSNID \"roofxband\"");
-        dbprintlf(RED_FG "#define GSNID \"haystack\"");
-        dbprintlf(RED_FG "#define GSNID \"track\"");
-        dbprintlf(RED_FG "Or, in a Makefile: -DGSNID=\\\"guiclient\\\"");
-        throw std::invalid_argument("GSNID not recognized.");
-    }
-#endif
-#ifndef GSNID
-    dbprintlf(FATAL "GSNID not defined. Please ensure one of the following exists:");
-    dbprintlf(RED_FG "#define GSNID \"guiclient\"");
-    dbprintlf(RED_FG "#define GSNID \"server\"");
-    dbprintlf(RED_FG "#define GSNID \"roofuhf\"");
-    dbprintlf(RED_FG "#define GSNID \"roofxband\"");
-    dbprintlf(RED_FG "#define GSNID \"haystack\"");
-    dbprintlf(RED_FG "#define GSNID \"track\"");
-    dbprintlf(RED_FG "Or, in a Makefile: -DGSNID=\\\"guiclient\\\"");
-    throw std::invalid_argument("GSNID not defined.");
-#endif
-    guid = NETFRAME_GUID;
-    this->type = type;
-    this->destination = destination;
-
-    payload_size = size;
+    hdr->payload_size = size;
 
     // Enforces a minimum payload capacity, even if the payload size if less.
     // payload_size = size < NETFRAME_MIN_PAYLOAD_SIZE ? NETFRAME_MIN_PAYLOAD_SIZE : size;
     size_t malloc_size = size < NETFRAME_MIN_PAYLOAD_SIZE ? NETFRAME_MIN_PAYLOAD_SIZE : size;
 
     // Payload too large error.
-    if (payload_size > NETFRAME_MAX_PAYLOAD_SIZE)
+    if (hdr->payload_size > NETFRAME_MAX_PAYLOAD_SIZE)
     {
         throw std::invalid_argument("Payload size larger than 0xfffe4.");
     }
@@ -145,13 +90,13 @@ NetFrame::NetFrame(unsigned char *payload, ssize_t size, NetType type, NetVertex
     // Check if payload is nullptr, and allocate memory if it is not.
     if (payload != nullptr && size > 0)
     {
-        memcpy(this->payload, payload, payload_size);
+        memcpy(this->payload, payload, hdr->payload_size);
     }
 
-    crc1 = internal_crc16(this->payload, malloc_size);
-    crc2 = crc1;
-    netstat = 0x0;
-    termination = 0xAAAA;
+    hdr->crc1 = internal_crc16(this->payload, malloc_size);
+    ftr->crc2 = hdr->crc1;
+    ftr->netstat = 0x0;
+    ftr->termination = NETFRAME_TERMINATOR;
 }
 
 NetFrame::~NetFrame()
@@ -159,18 +104,18 @@ NetFrame::~NetFrame()
     if (payload != nullptr)
         free(payload);
     payload = nullptr;
-    payload_size = 0;
+    hdr->payload_size = -1;
 }
 
-int NetFrame::retrievePayload(unsigned char *storage, ssize_t capacity)
+int NetFrame::retrievePayload(void *storage, ssize_t capacity)
 {
-    if (capacity < payload_size)
+    if (capacity < hdr->payload_size)
     {
-        dbprintlf("Capacity less than payload size (%ld < %ld).\n", capacity, payload_size);
+        dbprintlf("Capacity less than payload size (%ld < %d).\n", capacity, hdr->payload_size);
         return -1;
     }
 
-    memcpy(storage, payload, payload_size);
+    memcpy(storage, payload, hdr->payload_size);
 
     return 1;
 }
@@ -195,13 +140,13 @@ ssize_t NetFrame::sendFrame(NetData *network_data)
         return -1;
     }
 
-    if (payload_size < 0)
+    if (hdr->payload_size < 0)
     {
         dbprintlf(RED_FG "Frame was constructed using NetFrame() not NetFrame(unsigned char *, ssize_t, NetType, NetVertex), has not had data read into it, and is therefore unsendable.");
         return -1;
     }
 
-    size_t payload_buffer_size = payload_size < NETFRAME_MIN_PAYLOAD_SIZE ? NETFRAME_MIN_PAYLOAD_SIZE : payload_size;
+    size_t payload_buffer_size = hdr->payload_size < NETFRAME_MIN_PAYLOAD_SIZE ? NETFRAME_MIN_PAYLOAD_SIZE : hdr->payload_size;
 
     ssize_t send_size = 0;
     uint8_t *buffer = nullptr;
@@ -219,22 +164,13 @@ ssize_t NetFrame::sendFrame(NetData *network_data)
     // 3. Footer
 
     // Set the header area of the buffer.
-    NetFrameHeader *header = (NetFrameHeader *)buffer;
-    header->guid = this->guid;
-    header->type = (uint32_t)this->type;
-    header->origin = (uint32_t)this->origin;
-    header->destination = (uint32_t)this->destination;
-    header->payload_size = this->payload_size;
-    header->crc1 = this->crc1;
+    memcpy(buffer, this->hdr, sizeof(NetFrameHeader));
 
     // Copy the payload into the buffer.
     memcpy(buffer + sizeof(NetFrameHeader), this->payload, payload_buffer_size);
 
     // Set the footer area of the buffer.
-    NetFrameFooter *footer = (NetFrameFooter *)(buffer + sizeof(NetFrameHeader) + payload_buffer_size);
-    footer->crc2 = this->crc2;
-    footer->netstat = this->netstat;
-    footer->termination = termination;
+    memcpy(buffer + sizeof(NetFrameHeader) + payload_buffer_size, this->ftr, sizeof(NetFrameFooter));
 
     // Set frame_size to malloc_size, the bytes allocated for the sendable buffer, to track how many bytes should send.
     this->frame_size = malloc_size;
@@ -314,14 +250,14 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
 
     if (offset == sizeof(NetFrameHeader)) // success
     {
-        this->guid = header.guid;
-        this->type = (NetType)header.type;
-        this->origin = (NetVertex)header.origin;
-        this->destination = (NetVertex)header.destination;
-        this->payload_size = header.payload_size;
-        this->crc1 = header.crc1;
+        hdr->guid = header.guid;
+        hdr->type = header.type;
+        hdr->origin = header.origin;
+        hdr->destination = header.destination;
+        hdr->payload_size = header.payload_size;
+        hdr->crc1 = header.crc1;
 
-        payload_buffer_size = payload_size < NETFRAME_MIN_PAYLOAD_SIZE ? NETFRAME_MIN_PAYLOAD_SIZE : payload_size;
+        payload_buffer_size = hdr->payload_size < NETFRAME_MIN_PAYLOAD_SIZE ? NETFRAME_MIN_PAYLOAD_SIZE : hdr->payload_size;
 
         if (payload_buffer_size <= NETFRAME_MAX_PAYLOAD_SIZE)
         {
@@ -395,15 +331,15 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
     // memcpy
     if (offset == sizeof(NetFrameFooter))
     {
-        this->crc2 = footer.crc2;
-        this->netstat = footer.netstat;
-        this->termination = footer.termination;
+        ftr->crc2 = footer.crc2;
+        ftr->netstat = footer.netstat;
+        ftr->termination = footer.termination;
     }
 
     // Validate the data we read as a valid NetFrame.
     if (this->validate())
     {
-        return this->payload_size;
+        return hdr->payload_size;
     }
 
     return -1;
@@ -411,61 +347,52 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
 
 int NetFrame::validate()
 {
-    if (guid != NETFRAME_GUID)
+    if (hdr->guid != NETFRAME_GUID)
     {
         return -1;
     }
-    else if ((int)type < (int)NetType::POLL || (int)type > (int)NetType::SW_UPDATE)
+    else if ((hdr->type < (int)NetType::POLL) || (hdr->type > (int)NetType::MAX))
     {
         return -2;
     }
-    else if (payload == NULL || payload_size == 0 || type == NetType::POLL)
+    else if ((payload == nullptr) || (hdr->payload_size == 0) || (hdr->type == (int)NetType::POLL))
     {
         // dbprintlf(YELLOW_FG "payload == NULL: %d; payload_size: %d; type == NetType::POLL: %d", payload == NULL, payload_size, type == NetType::POLL);
-        if (payload_size != 0 || type != NetType::POLL)
+        if ((hdr->payload_size != 0) || (hdr->type != (uint32_t)NetType::POLL))
         {
             return -3;
         }
     }
-    else if ((int)origin < (int)NetVertex::CLIENT || (int)origin > (int)NetVertex::TRACK)
-    {
-        return -4;
-    }
-    else if ((int)destination < (int)NetVertex::CLIENT || (int)destination > (int)NetVertex::TRACK)
-    {
-        return -5;
-    }
-    else if (payload_size < 0 || payload_size > NETFRAME_MAX_PAYLOAD_SIZE)
+    else if ((hdr->payload_size < 0) || (hdr->payload_size > NETFRAME_MAX_PAYLOAD_SIZE))
     {
         return -6;
     }
-    else if (crc1 != crc2)
+    else if (hdr->crc1 != ftr->crc2)
     {
-        return -7;
+        dbprintlf("CRC at header 0x%04x does not match CRC at footer 0x%04x", hdr->crc1, ftr->crc2);
     }
-    else if (crc1 != internal_crc16(payload, payload_size))
+    else if (hdr->crc1 != internal_crc16(payload, hdr->payload_size))
     {
         return -8;
     }
-    else if (termination != 0xAAAA)
+    else if (ftr->termination != NETFRAME_TERMINATOR)
     {
         return -9;
     }
-
     return 1;
 }
 
 void NetFrame::print()
 {
     dbprintlf(BLUE_FG "NETWORK FRAME");
-    dbprintlf("GUID ------------ 0x%08x", guid);
-    dbprintlf("Type ------------ %d", (int)type);
-    dbprintlf("Destination ----- %d", (int)destination);
-    dbprintlf("Origin ---------- %d", (int)origin);
-    dbprintlf("Payload Size ---- %ld", payload_size);
-    dbprintlf("CRC1 ------------ 0x%04x", crc1);
+    dbprintlf("GUID ------------ 0x%08x", hdr->guid);
+    dbprintlf("Type ------------ %d", (int)hdr->type);
+    dbprintlf("Destination ----- %d", (int)hdr->destination);
+    dbprintlf("Origin ---------- %d", (int)hdr->origin);
+    dbprintlf("Payload Size ---- %d", hdr->payload_size);
+    dbprintlf("CRC1 ------------ 0x%04x", hdr->crc1);
     dbprintf("Payload ---- (HEX)");
-    for (int i = 0; i < payload_size; i++)
+    for (int i = 0; i < hdr->payload_size; i++)
     {
         if ((i % 2) == 0)
         {
@@ -477,24 +404,24 @@ void NetFrame::print()
         }
     }
     printf("\n");
-    dbprintlf("CRC2 ------------ 0x%04x", crc2);
-    dbprintlf("NetStat --------- 0x%x", netstat);
-    dbprintlf("Termination ----- 0x%04x", termination);
+    dbprintlf("CRC2 ------------ 0x%04x", ftr->crc2);
+    dbprintlf("NetStat --------- 0x%x", ftr->netstat);
+    dbprintlf("Termination ----- 0x%04x", ftr->termination);
 }
 
 void NetFrame::printNetstat()
 {
-    dbprintlf(BLUE_FG "NETWORK STATUS (%d)", netstat);
+    dbprintlf(BLUE_FG "NETWORK STATUS (%d)", ftr->netstat);
     dbprintf("GUI Client ----- ");
-    ((netstat & 0x80) == 0x80) ? printf(GREEN_FG "ONLINE" RESET_ALL "\n") : printf(RED_FG "OFFLINE" RESET_ALL "\n");
+    ((ftr->netstat & 0x80) == 0x80) ? printf(GREEN_FG "ONLINE" RESET_ALL "\n") : printf(RED_FG "OFFLINE" RESET_ALL "\n");
     dbprintf("Roof UHF ------- ");
-    ((netstat & 0x40) == 0x40) ? printf(GREEN_FG "ONLINE" RESET_ALL "\n") : printf(RED_FG "OFFLINE" RESET_ALL "\n");
+    ((ftr->netstat & 0x40) == 0x40) ? printf(GREEN_FG "ONLINE" RESET_ALL "\n") : printf(RED_FG "OFFLINE" RESET_ALL "\n");
     dbprintf("Roof X-Band ---- ");
-    ((netstat & 0x20) == 0x20) ? printf(GREEN_FG "ONLINE" RESET_ALL "\n") : printf(RED_FG "OFFLINE" RESET_ALL "\n");
+    ((ftr->netstat & 0x20) == 0x20) ? printf(GREEN_FG "ONLINE" RESET_ALL "\n") : printf(RED_FG "OFFLINE" RESET_ALL "\n");
     dbprintf("Haystack ------- ");
-    ((netstat & 0x10) == 0x10) ? printf(GREEN_FG "ONLINE" RESET_ALL "\n") : printf(RED_FG "OFFLINE" RESET_ALL "\n");
+    ((ftr->netstat & 0x10) == 0x10) ? printf(GREEN_FG "ONLINE" RESET_ALL "\n") : printf(RED_FG "OFFLINE" RESET_ALL "\n");
     dbprintf("Track ---------- ");
-    ((netstat & 0x8) == 0x8) ? printf(GREEN_FG "ONLINE" RESET_ALL "\n") : printf(RED_FG "OFFLINE" RESET_ALL "\n");
+    ((ftr->netstat & 0x8) == 0x8) ? printf(GREEN_FG "ONLINE" RESET_ALL "\n") : printf(RED_FG "OFFLINE" RESET_ALL "\n");
 }
 
 int NetFrame::setNetstat(uint8_t netstat)
@@ -533,32 +460,13 @@ void *gs_polling_thread(void *args)
     {
         if (network_data->connection_ready)
         {
-            NetFrame *polling_frame = new NetFrame(NULL, 0, NetType::POLL, NetVertex::SERVER);
+            NetFrame *polling_frame = new NetFrame(NULL, 0, NetType::POLL, network_data->server_vertex);
             polling_frame->sendFrame(network_data);
             delete polling_frame;
         }
         else
         {
-#ifdef GSNID
-            // Disables automatic reconnection for the GUI Client and Server.
-#ifndef XB_GS_TEST // Re-enables automatic reconnection for the xb_gs_test GUI client.
-            if (strcmp(GSNID, "guiclient") != 0 && strcmp(GSNID, "server") != 0)
-#endif
-            {
-                // Get our GS Network connection back up and running.
-                gs_connect_to_server(network_data);
-            }
-#endif
-#ifndef GSNID
-            dbprintlf(FATAL "GSNID not defined. Please ensure one of the following exists:");
-            dbprintlf(RED_FG "#define GSNID \"guiclient\"");
-            dbprintlf(RED_FG "#define GSNID \"server\"");
-            dbprintlf(RED_FG "#define GSNID \"roofuhf\"");
-            dbprintlf(RED_FG "#define GSNID \"roofxband\"");
-            dbprintlf(RED_FG "#define GSNID \"haystack\"");
-            dbprintlf(RED_FG "#define GSNID \"track\"");
-            dbprintlf(RED_FG "Or, in a Makefile: -DGSNID=\\\"guiclient\\\"");
-#endif
+            gs_connect_to_server(network_data);
         }
         usleep(network_data->polling_rate * 1000000);
     }
@@ -575,7 +483,7 @@ int gs_connect_to_server(NetDataClient *network_data)
 {
     int connect_status = -1;
 
-    dbprintlf(BLUE_FG "Attempting connection to %s.", SERVER_IP);
+    dbprintlf(BLUE_FG "Attempting connection to %s.", network_data->ip_addr);
 
     // This is already done when initializing network_data.
     // network_data->serv_ip->sin_port = htons(server_port);
@@ -584,7 +492,7 @@ int gs_connect_to_server(NetDataClient *network_data)
         dbprintlf(RED_FG "Socket creation error.");
         connect_status = -1;
     }
-    else if (inet_pton(AF_INET, SERVER_IP, &network_data->server_ip->sin_addr) <= 0)
+    else if (inet_pton(AF_INET, network_data->ip_addr, &network_data->server_ip->sin_addr) <= 0)
     {
         dbprintlf(RED_FG "Invalid address; address not supported.");
         connect_status = -2;
@@ -601,14 +509,45 @@ int gs_connect_to_server(NetDataClient *network_data)
         struct timeval timeout;
         timeout.tv_sec = RECV_TIMEOUT;
         timeout.tv_usec = 0;
-        setsockopt(network_data->socket, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof timeout);
-
-        network_data->connection_ready = true;
-        connect_status = 1;
+        setsockopt(network_data->socket, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof timeout); // connection timeout set
+        // Receive server acknowledgement
+        NetFrame *frame = new NetFrame();
+        NetDataClient *_network_data = (NetDataClient *)malloc(sizeof(NetDataClient));
+        memcpy(_network_data, network_data, sizeof(NetDataClient));
+        _network_data->connection_ready = true;
+        if ((connect_status = frame->recvFrame(_network_data)) <= 0)
+        {
+            dbprintlf("Server did not reply with end point number assignment");
+            connect_status = -4;
+        }
+        else if (frame->getType() != NetType::SRV)
+        {
+            dbprintlf("Server did not reply with an SRV type packet, reply type %d", frame->getType());
+            connect_status = -5;
+        }
+        else if (connect_status != 2 * sizeof(NetVertex))
+        {
+            dbprintlf("Server reply payload size mismatch");
+            frame->print();
+            connect_status = -6;
+        }
+        else
+        {
+            NetVertex vertices[2];
+            frame->retrievePayload(vertices, 2 * sizeof(NetVertex));
+            network_data->vertex = vertices[0];
+            network_data->server_vertex = vertices[1];
+            network_data->connection_ready = true;
+            connect_status = 1;
+        }
+        free(_network_data);
+        delete frame;
     }
 
     return connect_status;
 }
+
+// TODO: gs_accept()
 
 int gs_connect(int socket, const struct sockaddr *address, socklen_t socket_size, int tout_s)
 {
@@ -643,7 +582,7 @@ int gs_connect(int socket, const struct sockaddr *address, socklen_t socket_size
             dbprintlf(YELLOW_FG "EINPROGRESS in connect() - selecting");
             do
             {
-                if (tout_s > 0)
+                if (tout_s > 1)
                 {
                     tv.tv_sec = tout_s;
                 }

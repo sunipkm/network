@@ -13,21 +13,27 @@
 #define MEB_DEBUG_HPP
 
 #ifndef dbprintlf
-#define dbprintlf(format, ...)                                                                        \
-    fprintf(stderr, "[%s:%d | %s] " format "\x1b[0m\n", __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
-    fflush(stderr);
+#define dbprintlf(format, ...)                                                                            \
+    {                                                                                                     \
+        fprintf(stderr, "[%s:%d | %s] " format "\x1b[0m\n", __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
+        fflush(stderr);                                                                                   \
+    }
 #endif // dbprintlf
 
 #ifndef dbprintf
-#define dbprintf(format, ...)                                                                       \
-    fprintf(stderr, "[%s:%d | %s] " format "\x1b[0m", __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
-    fflush(stderr);
+#define dbprintf(format, ...)                                                                           \
+    {                                                                                                   \
+        fprintf(stderr, "[%s:%d | %s] " format "\x1b[0m", __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
+        fflush(stderr);                                                                                 \
+    }
 #endif // dbprintf
 
 #ifndef erprintlf
-#define erprintlf(error)                                                                                               \
-    fprintf(stderr, "[%s:%d | %s] \x1b[94m>>> %d: %s\x1b[0m\n", __FILE__, __LINE__, __func__, error, strerror(error)); \
-    fflush(stderr);
+#define erprintlf(error)                                                                                                   \
+    {                                                                                                                      \
+        fprintf(stderr, "[%s:%d | %s] \x1b[94m>>> %d: %s\x1b[0m\n", __FILE__, __LINE__, __func__, error, strerror(error)); \
+        fflush(stderr);                                                                                                    \
+    }
 #endif // erprintlf
 
 #ifndef MEB_COLORS
