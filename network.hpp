@@ -47,8 +47,11 @@ public:
     int thread_status;
     NetVertex origin;
 
+    friend class NetFrame;
+
 protected:
     NetData() {};
+    void Close();
 };
 
 class NetDataClient : public NetData
@@ -184,7 +187,7 @@ public:
      * @param network_data Network Data struct 
      * @return ssize_t Number of bytes received on success, negative on failure.
      */
-    ssize_t recvFrame(const NetData *network_data);
+    ssize_t recvFrame(NetData *network_data);
 
     /**
      * @brief Checks the validity of itself.

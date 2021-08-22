@@ -24,13 +24,12 @@ int main(int argc, char *argv[])
             int rcv_val = 0;
             if (server->GetClient(i)->connection_ready)
                 rcv_val = frame->recvFrame(server->GetClient(i));
-            if (rcv_val)
+            if (rcv_val > 0) // conn closed
             {
-                std::cout << "Frame received from client ID " << i << ", vertex " << (int)frame->getOrigin() << ", frame type " << (int)frame->getType() << std::endl;
+                std::cout << "Frame received " << rcv_val << " from client ID " << i << ", vertex " << (int)frame->getOrigin() << ", frame type " << (int)frame->getType() << std::endl;
             }
             delete frame;
         }
-        std::cout << std::endl;
         sleep(1);
     }
     return 0;

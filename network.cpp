@@ -24,6 +24,13 @@
 #include "network.hpp"
 #include "meb_debug.hpp"
 
+void NetData::Close()
+{
+    connection_ready = false;
+    close(_socket);
+    _socket = -1;
+}
+
 NetDataClient::NetDataClient(const char *ip_addr, NetPort server_port, int polling_rate)
     : NetData()
 {
@@ -279,9 +286,7 @@ ssize_t NetFrame::sendFrame(NetData *network_data)
     if (send_size < 0)
     {
         dbprintlf("Connection closed by server/client\n");
-        network_data->connection_ready = false;
-        close(network_data->_socket);
-        network_data->_socket = -1;
+        network_data->Close();
     }
 
     free(buffer);
@@ -289,7 +294,7 @@ ssize_t NetFrame::sendFrame(NetData *network_data)
     return send_size;
 }
 
-ssize_t NetFrame::recvFrame(const NetData *network_data)
+ssize_t NetFrame::recvFrame(NetData *network_data)
 {
     if (!(network_data->connection_ready))
     {
@@ -321,6 +326,7 @@ ssize_t NetFrame::recvFrame(const NetData *network_data)
             recv_attempts++;
             if (recv_attempts > 20)
             {
+                network_data->Close();
                 return -404;
             }
         }
@@ -347,6 +353,7 @@ ssize_t NetFrame::recvFrame(const NetData *network_data)
             recv_attempts++;
             if (recv_attempts > 20)
             {
+                network_data->Close();
                 return -404;
             }
         }
@@ -395,7 +402,7 @@ ssize_t NetFrame::recvFrame(const NetData *network_data)
         int sz = recv(network_data->_socket, this->payload + offset, payload_buffer_size - offset, MSG_WAITALL);
         if (sz < 0)
         {
-            // Connection broken mid-receive-payload.
+            network_data->Close();
             return -4;
         }
         if (sz == 0)
@@ -403,6 +410,7 @@ ssize_t NetFrame::recvFrame(const NetData *network_data)
             recv_attempts++;
             if (recv_attempts > 20)
             {
+                network_data->Close();
                 return -404;
             }
         }
@@ -421,7 +429,7 @@ ssize_t NetFrame::recvFrame(const NetData *network_data)
         int sz = recv(network_data->_socket, footer.bytes + offset, sizeof(NetFrameFooter) - offset, MSG_WAITALL);
         if (sz < 0)
         {
-            // Connection broken.
+            network_data->Close();
             return -4;
         }
         if (sz == 0)
@@ -429,6 +437,7 @@ ssize_t NetFrame::recvFrame(const NetData *network_data)
             recv_attempts++;
             if (recv_attempts > 20)
             {
+                network_data->Close();
                 return -404;
             }
         }
@@ -515,7 +524,6 @@ void NetFrame::print()
     dbprintlf("NetStat --------- 0x%x", ftr->netstat);
     dbprintlf("Termination ----- 0x%04x", ftr->termination);
     printf("\n");
-    
 }
 
 void NetFrame::printNetstat()
@@ -570,8 +578,8 @@ void *gs_polling_thread(void *args)
         if (network_data->connection_ready)
         {
             NetFrame *polling_frame = new NetFrame(NULL, 0, NetType::POLL, network_data->server_vertex);
-            polling_frame->print();
             polling_frame->sendFrame(network_data);
+            polling_frame->print();
             delete polling_frame;
         }
         else
@@ -689,7 +697,7 @@ int gs_accept(NetDataServer *serv, int client_id)
     if (client->_socket <= 0) // not connected
     {
         client->client_addrlen = sizeof(struct sockaddr_in);
-        client->_socket = accept(serv->fd, (struct sockaddr *)&(client->client_addr), (socklen_t *) &(client->client_addrlen));
+        client->_socket = accept(serv->fd, (struct sockaddr *)&(client->client_addr), (socklen_t *)&(client->client_addrlen));
     }
     if (client->_socket <= 0) // connection attempt unsuccessful
         return client->_socket;
@@ -705,9 +713,6 @@ int gs_accept(NetDataServer *serv, int client_id)
     if (bytes <= 0)
     {
         dbprintlf("Cound not send vertex identifiers, closing connection");
-        client->connection_ready = false;
-        close(client->_socket);
-        client->_socket = -1;
     }
 
     return client->_socket;
