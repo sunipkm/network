@@ -71,7 +71,7 @@ NetDataServer *network_data = new NetDataServer(52000, 5);
 
 // Construct a NetFrame object for receiving into, and call the receiving function.
 NetFrame *network_frame = new NetFrame();
-network_frame->recvFrame(network_data);
+network_frame->recvFrame(network_data->GetClient(id));
 
 // Allocate a buffer of appropriate size to hold the payload, and call retrievePayload to fill it.
 ssize_t buffer_size = network_frame->getPayloadSize();
