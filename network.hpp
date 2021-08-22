@@ -15,6 +15,7 @@
 #include <arpa/inet.h>
 #include <stdint.h>
 #include <pthread.h>
+#include <openssl/ssl.h>
 
 #define SERVER_POLL_RATE 5
 #define RECV_TIMEOUT 15
@@ -31,6 +32,7 @@ enum class NetType
     DATA,        // data frame
     CMD,         // command frame
     SRV,         // server connection acknowledgement frame
+    SSL_REQ,     // client requests SSL connection
     MAX          // Last element
 };
 
@@ -47,11 +49,16 @@ public:
     int thread_status;
     NetVertex origin;
 
+    int open_ssl_conn();
+    void close_ssl_conn();
+
     friend class NetFrame;
 
 protected:
-    NetData() {};
+    NetData(){};
     void Close();
+    bool ssl_ready = false; // Indicates subsequent send/receives will follow SSL
+    SSL *cssl;      // SSL connection
 };
 
 class NetDataClient : public NetData
@@ -61,12 +68,15 @@ private:
     NetVertex server_vertex;
     struct sockaddr_in server_ip[1];
     char disconnect_reason[64];
+
 public:
     NetDataClient(const char *ip_addr, NetPort server_port, int polling_rate);
-    const char *GetIP() const {return ip_addr;}
-    const char *GetDisconnectReason() const {return disconnect_reason;};
-    NetVertex GetVertex() const {return origin;}
-    NetVertex GetServerVertex() const {return server_vertex;}
+    const char *GetIP() const { return ip_addr; }
+    const char *GetDisconnectReason() const { return disconnect_reason; };
+    NetVertex GetVertex() const { return origin; }
+    NetVertex GetServerVertex() const { return server_vertex; }
+
+    ~NetDataClient();
 
     friend int gs_connect_to_server(NetDataClient *network_data);
     friend void *gs_polling_thread(void *);
@@ -78,6 +88,8 @@ public:
 class NetClient : public NetData
 {
 public:
+    ~NetClient();
+    
     int client_id;
     struct sockaddr_in client_addr;
     int client_addrlen = sizeof(client_addr);
@@ -91,7 +103,9 @@ private:
     int fd;
     bool listen_done = false;
     pthread_t accept_thread;
+
     friend void *gs_accept_thread(void *);
+
 public:
     NetDataServer(NetPort listening_port, int clients);
     ~NetDataServer();
@@ -99,12 +113,12 @@ public:
      * @brief Stop accepting new connections
      * 
      */
-    void StopAccept() {listen_done = true;};
+    void StopAccept() { listen_done = true; };
     /**
      * @brief Get the number of clients supported
      * @return int 
      */
-    int GetNumClients() {return num_clients;};
+    int GetNumClients() { return num_clients; };
     NetClient *GetClient(int id);
 
     friend int gs_accept(NetDataServer *, int);

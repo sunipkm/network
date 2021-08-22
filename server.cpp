@@ -32,5 +32,6 @@ int main(int argc, char *argv[])
         }
         sleep(1);
     }
+    delete server;
     return 0;
 }

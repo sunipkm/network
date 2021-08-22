@@ -24,16 +24,95 @@
 #include "network.hpp"
 #include "meb_debug.hpp"
 
+// #include <openssl/applink.c>
+#include <openssl/bio.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+
+static int ssl_init = 0;
+
+static SSL_CTX *sslctx;
+
+void InitializeSSL()
+{
+    SSL_load_error_strings();
+    SSL_library_init();
+    OpenSSL_add_all_algorithms();
+
+    sslctx = SSL_CTX_new(SSLv23_server_method());
+    SSL_CTX_set_options(sslctx, SSL_OP_SINGLE_DH_USE);
+    int use_cert = SSL_CTX_use_certificate_file(sslctx, "./serverCertificate.pem", SSL_FILETYPE_PEM);
+    int use_prv = SSL_CTX_use_PrivateKey_file(sslctx, ".C/serverCertificate.pem", SSL_FILETYPE_PEM);
+}
+
+void DestroySSL()
+{
+    ERR_free_strings();
+    EVP_cleanup();
+}
+
+int NetData::open_ssl_conn()
+{
+    if (ssl_init && connection_ready)
+    {
+        cssl = SSL_new(sslctx);
+        if (!SSL_set_fd(cssl, _socket))
+        {
+            dbprintlf("Could not open SSL connection");
+            return -1;
+        }
+        int ssl_err = SSL_accept(cssl);
+        if (ssl_err <= 0)
+        {
+            close_ssl_conn();
+            return -1;
+        }
+        ssl_ready = true;
+        return 1;
+    }
+    return -1;
+}
+
+void NetData::close_ssl_conn()
+{
+    if (ssl_init && ssl_ready)
+    {
+        ssl_ready = false;
+        SSL_shutdown(cssl);
+        SSL_free(cssl);
+    }
+}
+
 void NetData::Close()
 {
+    if (ssl_ready)
+        close_ssl_conn();
     connection_ready = false;
     close(_socket);
     _socket = -1;
 }
 
+NetDataClient::~NetDataClient()
+{
+    Close();
+    if (--ssl_init == 0)
+        DestroySSL();
+}
+
+NetClient::~NetClient()
+{
+    Close();
+    if (--ssl_init == 0)
+        DestroySSL();
+}
+
 NetDataClient::NetDataClient(const char *ip_addr, NetPort server_port, int polling_rate)
     : NetData()
 {
+    if (ssl_init++ == 0)
+    {
+        InitializeSSL();
+    }
     if (ip_addr == NULL)
         strcpy(this->ip_addr, "127.0.0.1");
     else
@@ -49,6 +128,10 @@ NetDataClient::NetDataClient(const char *ip_addr, NetPort server_port, int polli
 NetDataServer::NetDataServer(NetPort listening_port, int clients)
     : NetData()
 {
+    if (ssl_init++ == 0)
+    {
+        InitializeSSL();
+    }
     srand(time(NULL));
     origin = rand();
     if (clients < 1)
@@ -140,20 +223,26 @@ NetDataServer::~NetDataServer()
     }
 
     if (clients != nullptr)
-        delete clients;
+        delete[] clients;
     clients = nullptr;
     num_clients = 0;
+
+    if (--ssl_init == 0)
+        DestroySSL();
 }
 
 NetFrame::NetFrame(void *payload, ssize_t size, NetType type, NetVertex destination) : payload(nullptr)
 {
     hdr->payload_size = -1;
-    if (payload == nullptr || size == 0 || type == NetType::POLL)
+    if (payload == nullptr || size == 0 || type == NetType::POLL || type == NetType::SSL_REQ)
     {
-        if (payload != nullptr || size != 0 || type != NetType::POLL)
+        if ((payload != nullptr) || (size != 0))
         {
-            dbprintlf(FATAL "Invalid combination of NULL payload, 0 size, and/or POLL NetType.");
-            throw std::invalid_argument("Invalid combination of NULL payload, 0 size, and/or POLL NetType.");
+            if (!(type == NetType::POLL || type == NetType::SSL_REQ))
+            {
+                dbprintlf(FATAL "Invalid combination of NULL payload, 0 size, and/or POLL NetType.");
+                throw std::invalid_argument("Invalid combination of NULL payload, 0 size, and/or POLL NetType.");
+            }
         }
     }
 
@@ -281,7 +370,10 @@ ssize_t NetFrame::sendFrame(NetData *network_data)
     // Set frame_size to malloc_size, the bytes allocated for the sendable buffer, to track how many bytes should send.
     this->frame_size = malloc_size;
 
-    send_size = send(network_data->_socket, buffer, malloc_size, MSG_NOSIGNAL);
+    if (network_data->ssl_ready)
+        send_size = SSL_write(network_data->cssl, buffer, malloc_size);
+    else
+        send_size = send(network_data->_socket, buffer, malloc_size, MSG_NOSIGNAL);
 
     if (send_size < 0)
     {
@@ -296,6 +388,8 @@ ssize_t NetFrame::sendFrame(NetData *network_data)
 
 ssize_t NetFrame::recvFrame(NetData *network_data)
 {
+    ssize_t retval = -1;
+
     if (!(network_data->connection_ready))
     {
         dbprintlf(YELLOW_FG "Connection is not ready, send aborted.");
@@ -315,7 +409,11 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
 
     do
     {
-        int sz = recv(network_data->_socket, header.bytes + offset, 1, MSG_WAITALL);
+        int sz;
+        if (network_data->ssl_ready)
+            sz = SSL_read(network_data->cssl, header.bytes + offset, 1);
+        else
+            sz = recv(network_data->_socket, header.bytes + offset, 1, MSG_WAITALL);
         if (sz < 0)
         {
             // Connection broken.
@@ -345,7 +443,11 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
     // Receive the rest of the header.
     do
     {
-        int sz = recv(network_data->_socket, header.bytes + offset, sizeof(NetFrameHeader) - offset, MSG_WAITALL);
+        int sz;
+        if (network_data->ssl_ready)
+            sz = SSL_read(network_data->cssl, header.bytes + offset, sizeof(NetFrameHeader) - offset);
+        else
+            sz = recv(network_data->_socket, header.bytes + offset, sizeof(NetFrameHeader) - offset, MSG_WAITALL);
         if (sz < 0)
             break;
         if (sz == 0)
@@ -399,7 +501,11 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
     // Receive the payload.
     do
     {
-        int sz = recv(network_data->_socket, this->payload + offset, payload_buffer_size - offset, MSG_WAITALL);
+        int sz;
+        if (network_data->ssl_ready)
+            sz = SSL_read(network_data->cssl, this->payload + offset, payload_buffer_size - offset);
+        else
+            sz = recv(network_data->_socket, this->payload + offset, payload_buffer_size - offset, MSG_WAITALL);
         if (sz < 0)
         {
             network_data->Close();
@@ -426,7 +532,11 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
     // Receive the footer.
     do
     {
-        int sz = recv(network_data->_socket, footer.bytes + offset, sizeof(NetFrameFooter) - offset, MSG_WAITALL);
+        int sz;
+        if (network_data->ssl_ready)
+            sz = SSL_read(network_data->cssl, footer.bytes + offset, sizeof(NetFrameFooter) - offset);
+        else
+            sz = recv(network_data->_socket, footer.bytes + offset, sizeof(NetFrameFooter) - offset, MSG_WAITALL);
         if (sz < 0)
         {
             network_data->Close();
@@ -455,10 +565,21 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
     // Validate the data we read as a valid NetFrame.
     if (this->validate())
     {
-        return hdr->payload_size + sizeof(NetFrameFooter) + sizeof(NetFrameHeader);
+        retval = payload_buffer_size + sizeof(NetFrameFooter) + sizeof(NetFrameHeader);
     }
 
-    return -1;
+    if (this->getType() == NetType::SSL_REQ)
+    {
+        int ack_cmd = (int)NetType::SSL_REQ;
+        NetFrame *ackframe = new NetFrame(&ack_cmd, sizeof(int), NetType::ACK, network_data->origin);
+        retval = ackframe->sendFrame(network_data);
+        if (retval > 0)
+        {
+            network_data->open_ssl_conn();
+        }
+    }
+
+    return retval;
 }
 
 int NetFrame::validate()
