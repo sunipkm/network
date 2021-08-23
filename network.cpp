@@ -29,24 +29,55 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
-static int ssl_init = 0;
-
-static SSL_CTX *sslctx = NULL;
+static int ssl_lib_init = 0;
 
 // TODO: Generate key for SSL connection automatically
 
-void InitializeSSL()
-{
-    SSL_load_error_strings();
-    SSL_library_init();
-    OpenSSL_add_all_algorithms();
+// TODO: Request SSL authentication
 
-    sslctx = SSL_CTX_new(SSLv23_server_method());
-    SSL_CTX_set_options(sslctx, SSL_OP_SINGLE_DH_USE);
-    int use_cert = SSL_CTX_use_certificate_file(sslctx, "./cert.pem", SSL_FILETYPE_PEM);
-    int use_prv = SSL_CTX_use_PrivateKey_file(sslctx, "./key.pem", SSL_FILETYPE_PEM);
-    if (use_cert != 1 || use_prv != 1)
-        ssl_init = 0;
+void InitializeSSLLibrary()
+{
+    if (ssl_lib_init++ == 0)
+    {
+        SSL_load_error_strings();
+        SSL_library_init();
+        OpenSSL_add_all_algorithms();
+    }
+}
+
+SSL_CTX *InitializeSSLServer(void)
+{
+    InitializeSSLLibrary();
+    SSL_CTX *ctx = SSL_CTX_new(SSLv23_server_method());
+    if (ctx == NULL)
+    {
+        dbprintlf(FATAL "Could create SSL context");
+        return NULL;
+    }
+    int use_cert = SSL_CTX_use_certificate_file(ctx, "./cert.pem", SSL_FILETYPE_PEM);
+    int use_prv = SSL_CTX_use_PrivateKey_file(ctx, "./key.pem", SSL_FILETYPE_PEM);
+    if ((use_cert != 1) || (use_prv != 1) || (SSL_CTX_check_private_key(ctx) != 1))
+    {
+        dbprintlf("Cert: %d, Private Key: %d, Validation: %d", use_cert, use_prv, SSL_CTX_check_private_key(ctx));
+        return NULL;
+    }
+    SSL_CTX_set_dh_auto(ctx, 1);
+    return ctx;
+}
+
+SSL_CTX *InitializeSSLClient(void)
+{
+    InitializeSSLLibrary();
+    SSL_CTX *ctx = SSL_CTX_new(SSLv23_client_method());
+    if (ctx == NULL)
+    {
+        dbprintlf(FATAL "Could create SSL context");
+    }
+    else
+    {
+        SSL_CTX_set_dh_auto(ctx, 1);
+    }
+    return ctx;
 }
 
 void DestroySSL()
@@ -55,17 +86,17 @@ void DestroySSL()
     EVP_cleanup();
 }
 
-int NetData::open_ssl_conn()
+int NetDataClient::open_ssl_conn()
 {
-    if (ssl_init && connection_ready)
+    if (ctx != NULL && connection_ready)
     {
-        cssl = SSL_new(sslctx);
+        cssl = SSL_new(ctx);
         if (!SSL_set_fd(cssl, _socket))
         {
             dbprintlf("Could not open SSL connection");
             return -1;
         }
-        int ssl_err = SSL_accept(cssl);
+        int ssl_err = SSL_connect(cssl);
         if (ssl_err <= 0)
         {
             close_ssl_conn();
@@ -79,12 +110,19 @@ int NetData::open_ssl_conn()
 
 void NetData::close_ssl_conn()
 {
-    if (ssl_init && ssl_ready)
+    if (cssl != NULL)
     {
         ssl_ready = false;
         SSL_shutdown(cssl);
         SSL_free(cssl);
+        cssl = NULL;
     }
+    if (ctx != NULL)
+    {
+        SSL_CTX_free(ctx);
+        ctx = NULL;
+    }
+    DestroySSL();
 }
 
 void NetData::Close()
@@ -99,24 +137,17 @@ void NetData::Close()
 NetDataClient::~NetDataClient()
 {
     Close();
-    if (--ssl_init == 0)
-        DestroySSL();
 }
 
 NetClient::~NetClient()
 {
     Close();
-    if (--ssl_init == 0)
-        DestroySSL();
 }
 
 NetDataClient::NetDataClient(const char *ip_addr, NetPort server_port, int polling_rate)
     : NetData()
 {
-    if (ssl_init++ == 0)
-    {
-        InitializeSSL();
-    }
+    ctx = InitializeSSLClient();
     if (ip_addr == NULL)
         strcpy(this->ip_addr, "127.0.0.1");
     else
@@ -132,10 +163,8 @@ NetDataClient::NetDataClient(const char *ip_addr, NetPort server_port, int polli
 NetDataServer::NetDataServer(NetPort listening_port, int clients)
     : NetData()
 {
-    if (ssl_init++ == 0)
-    {
-        InitializeSSL();
-    }
+    server = true;
+    InitializeSSLLibrary();
     srand(time(NULL));
     origin = rand();
     if (clients < 1)
@@ -230,9 +259,6 @@ NetDataServer::~NetDataServer()
         delete[] clients;
     clients = nullptr;
     num_clients = 0;
-
-    if (--ssl_init == 0)
-        DestroySSL();
 }
 
 NetFrame::NetFrame(void *payload, ssize_t size, NetType type, NetVertex destination) : payload(nullptr)
@@ -408,6 +434,7 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
 
     // Verify GUID.
     NetFrameHeader header;
+    memset(header.bytes, 0x0, sizeof(NetFrameHeader));
     int offset = 0;
     int recv_attempts = 0;
 
@@ -571,33 +598,65 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
     {
         retval = payload_buffer_size + sizeof(NetFrameFooter) + sizeof(NetFrameHeader);
     }
+#ifdef NETWORK_DEBUG
+    else
+    {
+        dbprintlf("Validation failed on frame");
+    }
+#endif
 
-    if (this->getType() == NetType::SSL_REQ)
+    if (this->getType() == NetType::SSL_REQ && network_data->server == false) // SSL request received from client
     {
         int ack_cmd = (int)NetType::SSL_REQ;
-        NetFrame *ackframe = new NetFrame(&ack_cmd, sizeof(int), ssl_init ? NetType::ACK : NetType::NACK, network_data->origin);
-        retval = ackframe->sendFrame(network_data);
+        NetFrame *ackframe = new NetFrame(&ack_cmd, sizeof(int), ssl_lib_init ? NetType::ACK : NetType::NACK, network_data->origin);
+        retval = ackframe->sendFrame(network_data); // acknowledge SSL request
         if (retval > 0)
         {
-            network_data->open_ssl_conn();
+            network_data->ssl_ready = true;     // Set SSL ready
+            return gs_accept_ssl(network_data); // Set up SSL as server
         }
     }
 
     return retval;
 }
 
-int NetData::RequestSSL()
+int NetDataClient::RequestSSL()
 {
-    if (ssl_init == 0)
+    if (ssl_lib_init == 0)
     {
         dbprintlf("Could not request SSL connection, SSL not initialized.\n");
         return -1;
     }
+    if (server)
+    {
+        dbprintlf("Server can not initiate an SSL request");
+        return -1;
+    }
     NetFrame *frame = new NetFrame(NULL, 0, NetType::SSL_REQ, origin);
-    int retval = frame->sendFrame(this);
+    int retval = frame->sendFrame(this); // send request
     delete frame;
     frame = new NetFrame();
-    retval = frame->recvFrame(this);
+    retval = frame->recvFrame(this);                                                  // receive N/ACK
+    if (retval > 0 && connection_ready && frame->getPayloadSize() == sizeof(NetType)) // received N/ACK
+    {
+        NetType cmdreply = NetType::MAX;
+        if ((frame->getType() == NetType::ACK) || (frame->getType() == NetType::NACK))
+        {
+            frame->retrievePayload(&cmdreply, sizeof(NetType));
+        }
+        if ((cmdreply == NetType::SSL_REQ) && (frame->getType() == NetType::ACK)) // SSL request granted
+        {
+            for (int i = 0; (i < 20) && (open_ssl_conn() < 0); i++)
+            {
+                dbprintlf("Open connection error");
+                usleep(100000);
+            }
+        }
+        else
+        {
+            return -1;
+        }
+    }
     return retval;
 }
 
@@ -642,7 +701,7 @@ void NetFrame::print()
 {
     dbprintlf(BLUE_FG "NETWORK FRAME");
     dbprintlf("GUID ------------ 0x%08x", hdr->guid);
-    dbprintlf("Type ------------ %d", (int)hdr->type);
+    dbprintlf("Type ------------ 0x%02x", (int)hdr->type);
     dbprintlf("Destination ----- %d", (int)hdr->destination);
     dbprintlf("Origin ---------- %d", (int)hdr->origin);
     dbprintlf("Payload Size ---- %d", hdr->payload_size);
@@ -785,6 +844,8 @@ int gs_connect_to_server(NetDataClient *network_data)
         timeout.tv_sec = RECV_TIMEOUT;
         timeout.tv_usec = 0;
         setsockopt(network_data->_socket, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof timeout); // connection timeout set
+        int set = 1;
+        setsockopt(network_data->_socket, SOL_SOCKET, SO_NOSIGPIPE, &set, sizeof(set));
         // Receive server acknowledgement
         NetFrame *frame = new NetFrame();
         NetDataClient *_network_data = (NetDataClient *)malloc(sizeof(NetDataClient));
@@ -815,7 +876,20 @@ int gs_connect_to_server(NetDataClient *network_data)
             network_data->connection_ready = true;
             connect_status = 1;
         }
+        delete frame;
         free(_network_data);
+    }
+    usleep(10000);
+    if (connect_status)
+    {
+        NetType acktype = NetType::SRV;
+        NetFrame *frame = new NetFrame(&acktype, sizeof(NetType), NetType::ACK, network_data->server_vertex);
+        int retval;
+        if ((retval = frame->sendFrame(network_data)) < 0)
+        {
+            dbprintlf("Could not send ACK frame, error %d", retval);
+            return retval;
+        }
         delete frame;
     }
     network_data->recv_active = true;
@@ -843,6 +917,8 @@ int gs_accept(NetDataServer *serv, int client_id)
         return client->_socket;
 
     client->connection_ready = true;
+    int set = 1;
+    setsockopt(client->_socket, SOL_SOCKET, SO_NOSIGPIPE, &set, sizeof(set));
     NetVertex vertices[2];
     vertices[0] = rand();
     vertices[1] = serv->origin;
@@ -855,7 +931,120 @@ int gs_accept(NetDataServer *serv, int client_id)
         dbprintlf("Cound not send vertex identifiers, closing connection");
     }
 
+    delete frame;
+
+    frame = new NetFrame();
+
+    usleep(20000);
+
+    int retval;
+    for (int i = 0; i < 20; i++)
+    {
+        retval = frame->recvFrame(client);
+        if (retval > 0)
+            break;
+    }
+    if (retval < 0)
+    {
+        dbprintlf(FATAL "Did not receive acknowledgement: %d", retval);
+        return retval;
+    }
+    else if (frame->getType() != NetType::ACK)
+    {
+        dbprintlf(RED_FG "Expecting ACK, received %d", (int) frame->getType());
+    }
+    else
+    {
+        NetType ackcmd = NetType::MAX;
+        frame->retrievePayload(&ackcmd, sizeof(NetType));
+        if (ackcmd != NetType::SRV)
+        {
+            dbprintlf(RED_FG "Expecting SRV, received %d", (int) ackcmd);
+        }
+    }
+
     return client->_socket;
+}
+
+int gs_accept_ssl(NetData *client)
+{
+    if (client->server)
+    {
+        dbprintlf("Function not applicable on a server");
+        return -100;
+    }
+    if (client->cssl != NULL)
+    {
+        dbprintlf("Connection to client %p already over SSL", client);
+        return 1;
+    }
+    else if (!client->ssl_ready)
+    {
+        dbprintlf("SSL not ready");
+        return 1;
+    }
+    client->ctx = InitializeSSLServer();
+    if (client->ctx == NULL)
+    {
+        dbprintlf(FATAL "Could not initialize SSL context for the client");
+        return -1;
+    }
+    client->cssl = SSL_new(client->ctx);
+    if (client->cssl == NULL)
+    {
+        dbprintlf(FATAL "Could not allocate SSL connection");
+        return -2;
+    }
+    if (!SSL_set_fd(client->cssl, client->_socket))
+    {
+        dbprintlf("Could not attach C socket to SSL socket");
+        client->close_ssl_conn();
+        return -3;
+    }
+    int accept_retval = 0;
+    for (int i = 0; i < 100; i++)
+    {
+        accept_retval = SSL_accept(client->cssl);
+        if (accept_retval == 0)
+        {
+            break;
+        }
+        else if (accept_retval == -1)
+        {
+            int err = SSL_get_error(client->cssl, accept_retval);
+            if (err == SSL_ERROR_WANT_READ)
+            {
+                usleep(10000);
+            }
+            else if (err == SSL_ERROR_WANT_WRITE)
+            {
+                usleep(10000);
+            }
+            else if (err == SSL_ERROR_SYSCALL || err == SSL_ERROR_SSL)
+            {
+                dbprintlf("Error syscall / ssl");
+                break;
+            }
+            else if (err == SSL_ERROR_ZERO_RETURN)
+            {
+                dbprintlf("Error return zero");
+                break;
+            }
+        }
+        else
+        {
+            /* Continue */
+            break;
+        }
+    }
+    if (accept_retval < 0)
+    {
+        dbprintlf("Accept failed on SSL");
+        ERR_print_errors_fp(stderr);
+        client->close_ssl_conn();
+        return -4;
+    }
+    return 1;
 }
 
 int gs_connect(int socket, const struct sockaddr *address, socklen_t socket_size, int tout_s)

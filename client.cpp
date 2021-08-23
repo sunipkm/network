@@ -20,7 +20,9 @@ int main(int argc, char *argv[])
     pthread_t poll_thread;
     std::cout << "Server vertex: " << conn->GetServerVertex() << std::endl;
     std::cout << "Client vertex: " << conn->GetVertex() << std::endl;
+    sleep(1);
     printf("SSL request %s\n", conn->RequestSSL() > 0 ? "granted" : "denied");
+    sleep(1);
     if (pthread_create(&poll_thread, NULL, gs_polling_thread, conn) < 0)
     {
         std::cout << "pthread_create failed" << std::endl;

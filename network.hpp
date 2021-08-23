@@ -49,18 +49,18 @@ public:
     int thread_status;
     NetVertex origin;
 
-    int open_ssl_conn();
     void close_ssl_conn();
 
-    int RequestSSL();
-
     friend class NetFrame;
+    friend int gs_accept_ssl(NetData *);
 
 protected:
     NetData(){};
     void Close();
+    bool server = false;
     bool ssl_ready = false; // Indicates subsequent send/receives will follow SSL
-    SSL *cssl;      // SSL connection
+    SSL *cssl = NULL;       // SSL connection
+    SSL_CTX *ctx = NULL;    // SSL context
 };
 
 class NetDataClient : public NetData
@@ -75,6 +75,8 @@ public:
     NetDataClient(const char *ip_addr, NetPort server_port, int polling_rate);
     const char *GetIP() const { return ip_addr; }
     const char *GetDisconnectReason() const { return disconnect_reason; };
+    int open_ssl_conn();
+    int RequestSSL();
     NetVertex GetVertex() const { return origin; }
     NetVertex GetServerVertex() const { return server_vertex; }
 
@@ -107,6 +109,7 @@ private:
     pthread_t accept_thread;
 
     friend void *gs_accept_thread(void *);
+    friend int gs_accept(NetDataServer *, int);
 
 public:
     NetDataServer(NetPort listening_port, int clients);
@@ -122,8 +125,7 @@ public:
      */
     int GetNumClients() { return num_clients; };
     NetClient *GetClient(int id);
-
-    friend int gs_accept(NetDataServer *, int);
+    int open_ssl_conn();
 };
 
 typedef union
