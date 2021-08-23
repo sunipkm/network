@@ -1,7 +1,7 @@
 CC = gcc
 CXX = g++
-EDCFLAGS = -I ./ -Wall -std=c11 $(CFLAGS)
-EDCXXFLAGS = -I./ -Wall -std=c++11 $(CXXFLAGS)
+EDCFLAGS = -I ./ -Wall -std=c11 -Wno-deprecated-declarations $(CFLAGS)
+EDCXXFLAGS = -I./ -Wall -std=c++11 -Wno-deprecated-declarations $(CXXFLAGS)
 EDLDFLAGS = -lpthread -lm -lssl -lcrypto $(LDFLAGS)
 
 CXXOBJS = network.o \

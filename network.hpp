@@ -16,6 +16,7 @@
 #include <stdint.h>
 #include <pthread.h>
 #include <openssl/ssl.h>
+#include <openssl/sha.h>
 
 #define SERVER_POLL_RATE 5
 #define RECV_TIMEOUT 15
@@ -36,9 +37,61 @@ enum class NetType
     MAX          // Last element
 };
 
+class sha1_hash_t
+{
+private:
+    void clear()
+    {
+        memset(bytes, 0, sizeof(bytes));
+    }
+
+public:
+    uint8_t bytes[SHA512_DIGEST_LENGTH];
+
+    sha1_hash_t()
+    {
+        clear();
+    }
+    sha1_hash_t(const char *pass, size_t len)
+    {
+        if (pass != NULL && pass != nullptr)
+        {
+            SHA512_CTX ctx;
+            SHA512_Init(&ctx);
+            SHA512_Update(&ctx, pass, len);
+            SHA512_Final(bytes, &ctx);
+        }
+    }
+    void copy(uint8_t *src)
+    {
+        if ((src != NULL) && (src != nullptr))
+            memcpy(bytes, src, sizeof(bytes));
+    }
+    int hash() const
+    {
+        int result = 0;
+        for (int i = 0; i < sizeof(bytes); i++)
+            result |= bytes[i];
+        return result;
+    }
+    bool equal(sha1_hash_t hash) const
+    {
+        bool match = true;
+        for (int i = 0; i < sizeof(bytes); i++)
+        {
+            match = bytes[i] == hash.bytes[i];
+            if (!match)
+                break;
+        }
+        return match;
+    }
+};
+
 typedef int32_t NetVertex;
 
 typedef uint16_t NetPort;
+
+class NetDataServer;
 
 class NetData
 {
@@ -76,7 +129,7 @@ public:
     const char *GetIP() const { return ip_addr; }
     const char *GetDisconnectReason() const { return disconnect_reason; };
     int open_ssl_conn();
-    int RequestSSL();
+    int RequestSSL(sha1_hash_t *);
     NetVertex GetVertex() const { return origin; }
     NetVertex GetServerVertex() const { return server_vertex; }
 
@@ -97,6 +150,12 @@ public:
     int client_id;
     struct sockaddr_in client_addr;
     int client_addrlen = sizeof(client_addr);
+
+    friend class NetDataServer;
+    friend class NetFrame;
+
+protected:
+    NetDataServer *serv = nullptr;
 };
 
 class NetDataServer : public NetData
@@ -107,12 +166,16 @@ private:
     int fd;
     bool listen_done = false;
     pthread_t accept_thread;
+    sha1_hash_t *auth_token = nullptr;
 
     friend void *gs_accept_thread(void *);
     friend int gs_accept(NetDataServer *, int);
 
+    void _NetDataServer(NetPort listening_port, int clients);
+
 public:
     NetDataServer(NetPort listening_port, int clients);
+    NetDataServer(NetPort listening_port, int clients, sha1_hash_t auth_token);
     ~NetDataServer();
     /**
      * @brief Stop accepting new connections
@@ -126,6 +189,7 @@ public:
     int GetNumClients() { return num_clients; };
     NetClient *GetClient(int id);
     int open_ssl_conn();
+    const sha1_hash_t *GetAuthToken() const { return auth_token; };
 };
 
 typedef union
@@ -206,6 +270,8 @@ public:
      * @return ssize_t Number of bytes received on success, negative on failure.
      */
     ssize_t recvFrame(NetData *network_data);
+
+    ssize_t recvFrame(NetClient *network_data);
 
     /**
      * @brief Checks the validity of itself.

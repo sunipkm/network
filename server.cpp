@@ -14,7 +14,8 @@ void sighandler(int sig)
 
 int main(int argc, char *argv[])
 {
-    NetDataServer *server = new NetDataServer(52000, 5);
+    sha1_hash_t passwd = sha1_hash_t("Hello worle", 12);
+    NetDataServer *server = new NetDataServer(52000, 5, passwd);
     signal(SIGINT, sighandler);
     while (!done)
     {

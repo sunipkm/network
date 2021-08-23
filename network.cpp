@@ -28,6 +28,7 @@
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <openssl/sha.h>
 
 static int ssl_lib_init = 0;
 
@@ -163,8 +164,20 @@ NetDataClient::NetDataClient(const char *ip_addr, NetPort server_port, int polli
 NetDataServer::NetDataServer(NetPort listening_port, int clients)
     : NetData()
 {
-    server = true;
+    _NetDataServer(listening_port, clients);
+}
+
+NetDataServer::NetDataServer(NetPort listening_port, int clients, sha1_hash_t auth_token)
+{
+    this->auth_token = new sha1_hash_t();
     InitializeSSLLibrary();
+    _NetDataServer(listening_port, clients);
+    this->auth_token->copy(auth_token.bytes);
+}
+
+void NetDataServer::_NetDataServer(NetPort listening_port, int clients)
+{
+    server = true;
     srand(time(NULL));
     origin = rand();
     if (clients < 1)
@@ -227,6 +240,7 @@ NetDataServer::NetDataServer(NetPort listening_port, int clients)
     for (int i = 0; i < clients; i++)
     {
         this->clients[i].client_id = i;
+        this->clients[i].serv = this;
     }
 
     if (pthread_create(&accept_thread, NULL, gs_accept_thread, this) != 0)
@@ -259,6 +273,10 @@ NetDataServer::~NetDataServer()
         delete[] clients;
     clients = nullptr;
     num_clients = 0;
+
+    if (auth_token != nullptr)
+        delete auth_token;
+    auth_token = nullptr;
 }
 
 NetFrame::NetFrame(void *payload, ssize_t size, NetType type, NetVertex destination) : payload(nullptr)
@@ -605,22 +623,65 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
     }
 #endif
 
+    return retval;
+}
+
+ssize_t NetFrame::recvFrame(NetClient *network_data)
+{
+    NetData *client = (NetData *)network_data;
+    NetDataServer *serv = network_data->serv;
+    ssize_t retval = recvFrame(client);
+
+    if (retval <= 0) // error
+        return retval;
+
     if (this->getType() == NetType::SSL_REQ && network_data->server == false) // SSL request received from client
     {
         int ack_cmd = (int)NetType::SSL_REQ;
-        NetFrame *ackframe = new NetFrame(&ack_cmd, sizeof(int), ssl_lib_init ? NetType::ACK : NetType::NACK, network_data->origin);
-        retval = ackframe->sendFrame(network_data); // acknowledge SSL request
-        if (retval > 0)
+        NetType ret = NetType::NACK;
+        sha1_hash_t auth;
+        if (!ssl_lib_init) // initialized
+        {
+            dbprintlf(RED_FG "SSL Library not initialized");
+        }
+        else if (serv->GetAuthToken() == nullptr)
+        {
+            dbprintlf(RED_FG "Authentication token null");
+        }
+        else if (serv->GetAuthToken()->hash() == 0)
+        {
+            dbprintlf(RED_FG "Authentication token not set up");
+        }
+        else if (getPayloadSize() < sizeof(sha1_hash_t))
+        {
+
+        }
+        else if (retrievePayload(auth.bytes, sizeof(auth)) < 0)
+        {
+            dbprintlf(RED_FG "Could not obtain authentication token\n");
+        }
+        else if (!serv->GetAuthToken()->equal(auth))
+        {
+            dbprintlf(RED_FG "Authentication token mismatch");
+        }
+        else
+            ret = NetType::ACK;
+        NetFrame *ackframe = new NetFrame(&ack_cmd, sizeof(int), ret, network_data->origin);
+        retval = ackframe->sendFrame(network_data); // ACK/NACK SSL request
+        if ((retval > 0) && (ret == NetType::ACK))  // if ACK
         {
             network_data->ssl_ready = true;     // Set SSL ready
-            return gs_accept_ssl(network_data); // Set up SSL as server
+            if (gs_accept_ssl(network_data)) // Set up SSL as server
+                return retval;
+            else
+                return -101;
         }
     }
 
     return retval;
 }
 
-int NetDataClient::RequestSSL()
+int NetDataClient::RequestSSL(sha1_hash_t *auth)
 {
     if (ssl_lib_init == 0)
     {
@@ -632,7 +693,7 @@ int NetDataClient::RequestSSL()
         dbprintlf("Server can not initiate an SSL request");
         return -1;
     }
-    NetFrame *frame = new NetFrame(NULL, 0, NetType::SSL_REQ, origin);
+    NetFrame *frame = new NetFrame(auth->bytes, sizeof(sha1_hash_t), NetType::SSL_REQ, origin);
     int retval = frame->sendFrame(this); // send request
     delete frame;
     frame = new NetFrame();
@@ -951,7 +1012,7 @@ int gs_accept(NetDataServer *serv, int client_id)
     }
     else if (frame->getType() != NetType::ACK)
     {
-        dbprintlf(RED_FG "Expecting ACK, received %d", (int) frame->getType());
+        dbprintlf(RED_FG "Expecting ACK, received %d", (int)frame->getType());
     }
     else
     {
@@ -959,7 +1020,7 @@ int gs_accept(NetDataServer *serv, int client_id)
         frame->retrievePayload(&ackcmd, sizeof(NetType));
         if (ackcmd != NetType::SRV)
         {
-            dbprintlf(RED_FG "Expecting SRV, received %d", (int) ackcmd);
+            dbprintlf(RED_FG "Expecting SRV, received %d", (int)ackcmd);
         }
     }
 
