@@ -28,14 +28,18 @@
 enum class NetType
 {
     POLL = 0x1a, // Poll connection
-    ACK,         // acknowledge last transmission
-    NACK,        // not-acknowledge last transmission
     DATA,        // data frame
-    CMD,         // command frame
-    SRV,         // server connection acknowledgement frame
-    SSL_REQ,     // client requests SSL connection
+    SRV,         // server commands
     MAX          // Last element
 };
+
+enum class FrameStatus : uint16_t
+{
+    NONE = 0x0, // none
+    ACK = 0x1,  // acknowledgement
+    NACK = 0x2, // not-acknowledgement
+    MAX
+}
 
 class sha1_hash_t
 {
@@ -87,8 +91,20 @@ public:
     }
 };
 
+/**
+ * @brief 4 bytes
+ * For a client: 0x[Random vertex B1][Random vertex B0][Client Class (0x0 to 0x7f)][Client ID (0x0 to 0xff)]
+ *                  (Set by server)    (Set by server)     (Declared by client)       (Declared by client)
+ * 
+ * For a server: 0x[Random vertex B3][Random vertex B2][Random vertex B1 (0x80 to 0xff)][Random vertex B0]
+ * 
+ */
 typedef int32_t NetVertex;
 
+/**
+ * @brief Port number to which clients connect/servers listen on
+ * 
+ */
 typedef uint16_t NetPort;
 
 class NetDataServer;
@@ -123,23 +139,21 @@ private:
     NetVertex server_vertex;
     struct sockaddr_in server_ip[1];
     char disconnect_reason[64];
+    int polling_rate = 1000;
+    int ConnectToServer();
+
+    friend void *gs_polling_thread(void *);
 
 public:
     NetDataClient(const char *ip_addr, NetPort server_port, int polling_rate);
     const char *GetIP() const { return ip_addr; }
     const char *GetDisconnectReason() const { return disconnect_reason; };
-    int open_ssl_conn();
-    int RequestSSL(sha1_hash_t *);
     NetVertex GetVertex() const { return origin; }
     NetVertex GetServerVertex() const { return server_vertex; }
+    int GetPollingRate(){return polling_rate / 1000};
+    int SetPollingRate(int);
 
     ~NetDataClient();
-
-    friend int gs_connect_to_server(NetDataClient *network_data);
-    friend void *gs_polling_thread(void *);
-
-public:
-    int polling_rate = 1000; // POLL frame sent to the server every this-many milliseconds.
 };
 
 class NetClient : public NetData
@@ -174,7 +188,6 @@ private:
     void _NetDataServer(NetPort listening_port, int clients);
 
 public:
-    NetDataServer(NetPort listening_port, int clients);
     NetDataServer(NetPort listening_port, int clients, sha1_hash_t auth_token);
     ~NetDataServer();
     /**
@@ -188,7 +201,6 @@ public:
      */
     int GetNumClients() { return num_clients; };
     NetClient *GetClient(int id);
-    int open_ssl_conn();
     const sha1_hash_t *GetAuthToken() const { return auth_token; };
 };
 
@@ -197,13 +209,15 @@ typedef union
     struct __attribute__((packed))
     {
         uint32_t guid;
-        int32_t type;
-        int32_t origin;
-        int32_t destination;
+        NetType type;
+        FrameStatus status = 0;
+        NetVertex origin;
+        NetVertex destination;
         int32_t payload_size;
+        int32_t payload_type; // implemented by client
         uint16_t crc1;
     };
-    uint8_t bytes[22];
+    uint8_t bytes[28];
 } NetFrameHeader;
 
 typedef union
@@ -211,10 +225,9 @@ typedef union
     struct __attribute__((packed))
     {
         uint16_t crc2;
-        uint8_t netstat;
         uint16_t termination;
     };
-    uint8_t bytes[5];
+    uint8_t bytes[4];
 } NetFrameFooter;
 
 class NetFrame
@@ -239,7 +252,7 @@ public:
      * @param type 
      * @param dest 
      */
-    NetFrame(void *payload, ssize_t size, NetType type, NetVertex destination);
+    NetFrame(void *payload, ssize_t size, int payload_type, NetVertex destination, FrameStatus status = FrameStatus::NONE);
 
     /** DESTRUCTOR
      * @brief Frees payload and zeroes payload size.
@@ -271,8 +284,6 @@ public:
      */
     ssize_t recvFrame(NetData *network_data);
 
-    ssize_t recvFrame(NetClient *network_data);
-
     /**
      * @brief Checks the validity of itself.
      * 
@@ -286,27 +297,21 @@ public:
      */
     void print();
 
-    /**
-     * @brief Print network status.
-     * 
-     */
-    void printNetstat();
-
-    // This exists because 'setting' is restrictive.
-    int setNetstat(uint8_t netstat);
-
     // These exist because 'setting' is restrictive.
-    NetType getType() { return (NetType)hdr->type; };
-    NetVertex getOrigin() { return hdr->origin; };
-    NetVertex getDestination() { return hdr->destination; };
-    int getPayloadSize() { return hdr->payload_size; };
+    NetType GetType() { return (NetType)hdr->type; };
+    NetVertex GetOrigin() { return hdr->origin; };
+    NetVertex GetDestination() { return hdr->destination; };
+    FrameStatus GetStatus() {return hdr->status;};
+    int GetPayloadSize() { return hdr->payload_size; };
+    int GetPayloadType() { return hdr->payload_type; };
     /**
      * @brief Get the Frame Size of the NetFrame (applicable only for sendFrame())
      * 
      * @return ssize_t Frame size of sendFrame(), should be checked against the return value of sendFrame()
      */
     ssize_t getFrameSize() { return frame_size; }
-    uint8_t getNetstat() { return ftr->netstat; };
+
+    friend class NetDataServer; // NetDataServer needs to access recvFrame(NetClient *)
 
 private:
     // Sendable Data
@@ -316,6 +321,9 @@ private:
 
     // Non-sendable Data (invisible to .sendFrame(...) and .recvFrame(...))
     ssize_t frame_size; // Set to the number of bytes that should have sent during the last .sendFrame(...).
+
+    // Server functions can only sendFrame depending on where the data came from, receive is done by the internal thread
+    ssize_t recvFrame(NetClient *network_data);
 };
 
 /**
@@ -329,14 +337,6 @@ private:
 void *gs_polling_thread(void *args);
 
 void *gs_accept_thread(void *args);
-
-/**
- * @brief 
- * 
- * @param network_data 
- * @return int 
- */
-int gs_connect_to_server(NetDataClient *network_data);
 
 /**
  * @brief 
