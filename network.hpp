@@ -39,7 +39,7 @@ enum class FrameStatus : uint16_t
     ACK = 0x1,  // acknowledgement
     NACK = 0x2, // not-acknowledgement
     MAX
-}
+};
 
 class sha1_hash_t
 {
