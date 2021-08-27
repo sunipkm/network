@@ -1004,7 +1004,7 @@ int gs_accept(NetDataServer *serv, int client_id)
 
     // if authentication token
     FrameStatus ret = FrameStatus::NACK;
-    if (this->GetType() == NetType::SRV && this->GetPayloadType() == SrvCmds::SSL_AUTH_TOKEN && this->GetStatus() == FrameStatus::NONE)
+    if (frame->GetType() == NetType::SRV && frame->GetPayloadType() == SrvCmds::SSL_AUTH_TOKEN && frame->GetStatus() == FrameStatus::NONE)
     {
         sha1_hash_t auth;
         if (!ssl_lib_init)
@@ -1019,11 +1019,11 @@ int gs_accept(NetDataServer *serv, int client_id)
         {
             dbprintlf(RED_FG "Authentication token not set up");
         }
-        else if (getPayloadSize() != sizeof(sha1_hash_t))
+        else if (frame->GetPayloadSize() != sizeof(sha1_hash_t))
         {
             dbprintlf(RED_FG "Authentication token size invalid");
         }
-        else if (retrievePayload(auth.bytes, sizeof(auth)) < 0)
+        else if (frame->retrievePayload(auth.bytes, sizeof(auth)) < 0)
         {
             dbprintlf(RED_FG "Could not obtain authentication token\n");
         }

@@ -61,5 +61,13 @@ public:
      * @return false Unequal
      */
     bool operator==(const sha1_hash_t &h) const;
+    /**
+     * @brief Check if two SHA hashes are unequal
+     * 
+     * @param h SHA hash to compare against
+     * @return true Unequal
+     * @return false Equal
+     */
+    bool operator!=(const sha1_hash_t &h) const;
 };
 #endif

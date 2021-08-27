@@ -18,10 +18,7 @@ sha1_hash_t::sha1_hash_t(const char *str, size_t len)
     clear();
     if (str != NULL && str != nullptr && len > 0)
     {
-        SHA512_CTX ctx;
-        SHA512_Init(&ctx);
-        SHA512_Update(&ctx, str, len);
-        SHA512_Final(bytes, &ctx);
+        SHA512((const unsigned char *) str, len, bytes);
     }
 }
 
@@ -56,6 +53,11 @@ bool sha1_hash_t::operator==(const sha1_hash_t &h) const
             break;
         }
     return result;
+}
+
+bool sha1_hash_t::operator!=(const sha1_hash_t &h) const
+{
+    return !(*this == h);
 }
 
 const uint8_t *sha1_hash_t::GetBytes() const
