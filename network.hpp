@@ -17,6 +17,7 @@
 #include <pthread.h>
 #include <openssl/ssl.h>
 #include <openssl/sha.h>
+#include <string.h>
 
 #define SERVER_POLL_RATE 5
 #define RECV_TIMEOUT 15

@@ -15,6 +15,7 @@ void sighandler(int sig)
 int main(int argc, char *argv[])
 {
     signal(SIGINT, sighandler);
+    signal(SIGPIPE, SIG_IGN);
     sha1_hash_t *auth_token = new sha1_hash_t("Hello world", 12);
     NetDataClient *conn = new NetDataClient("127.0.0.1", 52000, 1000);
     std::cout << "Connecting to server: " << gs_connect_to_server(conn) << std::endl;

@@ -906,7 +906,9 @@ int gs_connect_to_server(NetDataClient *network_data)
         timeout.tv_usec = 0;
         setsockopt(network_data->_socket, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof timeout); // connection timeout set
         int set = 1;
+#ifndef __linux__
         setsockopt(network_data->_socket, SOL_SOCKET, SO_NOSIGPIPE, &set, sizeof(set));
+#endif
         // Receive server acknowledgement
         NetFrame *frame = new NetFrame();
         NetDataClient *_network_data = (NetDataClient *)malloc(sizeof(NetDataClient));
@@ -979,7 +981,9 @@ int gs_accept(NetDataServer *serv, int client_id)
 
     client->connection_ready = true;
     int set = 1;
+#ifndef __linux__
     setsockopt(client->_socket, SOL_SOCKET, SO_NOSIGPIPE, &set, sizeof(set));
+#endif
     NetVertex vertices[2];
     vertices[0] = rand();
     vertices[1] = serv->origin;
