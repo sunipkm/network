@@ -454,7 +454,7 @@ ssize_t NetFrame::sendFrame(NetData *network_data)
     // Set frame_size to malloc_size, the bytes allocated for the sendable buffer, to track how many bytes should send.
     this->frame_size = malloc_size;
 
-    if (network_data->ssl_ready)
+    if (network_data->ssl_ready && network_data->cssl != NULL)
         send_size = SSL_write(network_data->cssl, buffer, malloc_size);
     else
         send_size = send(network_data->_socket, buffer, malloc_size, MSG_NOSIGNAL);
@@ -495,7 +495,7 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
     do
     {
         int sz;
-        if (network_data->ssl_ready)
+        if (network_data->ssl_ready && network_data->cssl != NULL)
             sz = SSL_read(network_data->cssl, header.bytes + offset, 1);
         else
             sz = recv(network_data->_socket, header.bytes + offset, 1, MSG_WAITALL);
@@ -529,7 +529,7 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
     do
     {
         int sz;
-        if (network_data->ssl_ready)
+        if (network_data->ssl_ready && network_data->cssl != NULL)
             sz = SSL_read(network_data->cssl, header.bytes + offset, sizeof(NetFrameHeader) - offset);
         else
             sz = recv(network_data->_socket, header.bytes + offset, sizeof(NetFrameHeader) - offset, MSG_WAITALL);
@@ -590,7 +590,7 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
     do
     {
         int sz;
-        if (network_data->ssl_ready)
+        if (network_data->ssl_ready && network_data->cssl != NULL)
             sz = SSL_read(network_data->cssl, this->payload + offset, payload_buffer_size - offset);
         else
             sz = recv(network_data->_socket, this->payload + offset, payload_buffer_size - offset, MSG_WAITALL);
@@ -621,7 +621,7 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
     do
     {
         int sz;
-        if (network_data->ssl_ready)
+        if (network_data->ssl_ready && network_data->cssl != NULL)
             sz = SSL_read(network_data->cssl, footer.bytes + offset, sizeof(NetFrameFooter) - offset);
         else
             sz = recv(network_data->_socket, footer.bytes + offset, sizeof(NetFrameFooter) - offset, MSG_WAITALL);
@@ -962,7 +962,7 @@ int NetDataClient::ConnectToServer()
     }
     else if (frame->getPayloadSize() != 2 * sizeof(NetVertex))
     {
-        dbprintlf("Expecting package size %d, got %d (2x NetVertex)", 2 * sizeof(NetVertex), frame->getPayloadSize());
+        dbprintlf("Expecting package size %lu, got %u (2x NetVertex)", 2 * sizeof(NetVertex), frame->getPayloadSize());
         Close();
         delete frame;
         return -6;
