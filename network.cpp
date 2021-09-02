@@ -912,22 +912,22 @@ int NetDataClient::ConnectToServer()
     setsockopt(_socket, SOL_SOCKET, SO_NOSIGPIPE, &set, sizeof(set));
 #endif
     int retval;
-    NetVertex server_v;
+    NetVertex server_v = 0;
     NetFrame *frame;
     // Step 1. Receive server ping
-    frame = new NetFrame();
-    for (int i = 0; (i < 20) && (frame->recvFrame(this) < 0); i++)
-        ;
-    if (frame->getType() != NetType::POLL)
-    {
-        dbprintlf("Did not receive a poll packet, received %d", frame->getType());
-        Close();
-        delete frame;
-        return -2;
-    }
-    server_v = frame->getOrigin();
-    dbprintlf("Server Origin: 0x%x", server_v);
-    delete frame;
+    // frame = new NetFrame();
+    // for (int i = 0; (i < 20) && (frame->recvFrame(this) < 0); i++)
+    //     ;
+    // if (frame->getType() != NetType::POLL)
+    // {
+    //     dbprintlf("Did not receive a poll packet, received %d", frame->getType());
+    //     Close();
+    //     delete frame;
+    //     return -2;
+    // }
+    // server_v = frame->getOrigin();
+    // dbprintlf("Server Origin: 0x%x", server_v);
+    // delete frame;
     // Step 2. Connect SSL
     if ((retval = OpenSSLConn()) > 0)
     {
@@ -1011,16 +1011,17 @@ int gs_accept(NetDataServer *serv, int client_id)
     setsockopt(client->_socket, SOL_SOCKET, SO_NOSIGPIPE, &set, sizeof(set));
 #endif
     NetFrame *frame;
+    int bytes;
     // Step 1. Poll the client for device class and type
-    frame = new NetFrame(NULL, 0, 0, NetType::POLL, FrameStatus::NONE, 0); // vertex does not matter at this point
-    int bytes = frame->sendFrame(client);
-    delete frame;
-    if (bytes <= 0)
-    {
-        dbprintlf("Could not poll client, closing connection");
-        client->Close();
-        return -5;
-    }
+    // frame = new NetFrame(NULL, 0, 0, NetType::POLL, FrameStatus::NONE, 0); // vertex does not matter at this point
+    // bytes = frame->sendFrame(client);
+    // delete frame;
+    // if (bytes <= 0)
+    // {
+    //     dbprintlf("Could not poll client, closing connection");
+    //     client->Close();
+    //     return -5;
+    // }
     // Step 2. Switch to SSL
     if (gs_accept_ssl(client) > 0) // Set up SSL as server
     {
