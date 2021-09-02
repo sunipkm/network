@@ -28,7 +28,7 @@ int main(int argc, char *argv[])
                 rcv_val = frame->recvFrame(server->GetClient(i));
             if (rcv_val > 0) // conn closed
             {
-                std::cout << "Frame received " << rcv_val << " from client ID " << i << ", vertex " << (int)frame->getOrigin() << ", frame type " << (int)frame->getType() << std::endl;
+                std::cout << "Frame received " << rcv_val << " from client ID " << i << ", vertex " << std::hex << (int)frame->getOrigin() << std::dec << ", frame type " << (int)frame->getType() << std::endl;
             }
             delete frame;
         }

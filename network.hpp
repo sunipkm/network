@@ -23,19 +23,24 @@
 #define RECV_TIMEOUT 15
 #define NETFRAME_GUID 0x4d454239
 #define NETFRAME_MIN_PAYLOAD_SIZE 0x100
-#define NETFRAME_MAX_PAYLOAD_SIZE 0xfffe4
+#define NETFRAME_MAX_PAYLOAD_SIZE 0xfffe0
 #define NETFRAME_TERMINATOR 0xa5a5
 
-enum class NetType
+enum class NetType : int32_t
 {
     POLL = 0x1a, // Poll connection
-    ACK,         // acknowledge last transmission
-    NACK,        // not-acknowledge last transmission
     DATA,        // data frame
-    CMD,         // command frame
     SRV,         // server connection acknowledgement frame
-    SSL_REQ,     // client requests SSL connection
+    AUTH,        // Authentication token
     MAX          // Last element
+};
+
+enum class FrameStatus : int32_t
+{
+    NONE = 0, // General frame
+    ACK,      // Ack frame
+    NACK,     // Nack frame
+    MAX
 };
 
 class sha1_hash_t
@@ -88,7 +93,10 @@ public:
     }
 };
 
-typedef int32_t NetVertex;
+typedef uint32_t NetVertex;
+
+typedef int8_t ClientClass;
+typedef uint8_t ClientID;
 
 typedef uint16_t NetPort;
 
@@ -99,22 +107,19 @@ class NetData
 public:
     int _socket = -1;
     bool connection_ready = false;
-    bool recv_active;
-    int thread_status;
     NetVertex origin;
-
-    void close_ssl_conn();
-
-    friend class NetFrame;
-    friend int gs_accept_ssl(NetData *);
-
-protected:
-    NetData(){};
-    void Close();
     bool server = false;
     bool ssl_ready = false; // Indicates subsequent send/receives will follow SSL
     SSL *cssl = NULL;       // SSL connection
     SSL_CTX *ctx = NULL;    // SSL context
+    ClientClass devclass;
+    ClientID devId;
+
+    void Close();
+    void CloseSSLConn();
+
+protected:
+    NetData(){};
 };
 
 class NetDataClient : public NetData
@@ -124,23 +129,39 @@ private:
     NetVertex server_vertex;
     struct sockaddr_in server_ip[1];
     char disconnect_reason[64];
+    int polling_rate = 5000; // POLL frame sent to the server every this-many milliseconds.
+    sha1_hash_t *auth_token = nullptr;
+    bool recv_active = false;
+
+    int OpenSSLConn();
+    void CloseSSLConn() {NetData *d = (NetData *) this; d->CloseSSLConn();};
+    void Close() {NetData *d = (NetData *) this; d->Close();};
 
 public:
-    NetDataClient(const char *ip_addr, NetPort server_port, int polling_rate);
+    NetDataClient(const char *ip_addr, NetPort server_port, sha1_hash_t *auth, int polling_rate = 5000, ClientClass dclass = 0, ClientID did = 0);
     const char *GetIP() const { return ip_addr; }
     const char *GetDisconnectReason() const { return disconnect_reason; };
-    int open_ssl_conn();
-    int RequestSSL(sha1_hash_t *);
     NetVertex GetVertex() const { return origin; }
     NetVertex GetServerVertex() const { return server_vertex; }
+    int GetPollingRate() const { return polling_rate / 1000; };
+    int SetPollingRate(int prate)
+    {
+        prate *= 1000;
+        if (prate < 1000)
+            prate = 1000;
+        else if (prate > 30000)
+            prate = 30000;
+        polling_rate = prate;
+        return polling_rate / 1000;
+    };
+    void StopPolling() { recv_active = false; };
 
     ~NetDataClient();
 
+    int ConnectToServer();
+
     friend int gs_connect_to_server(NetDataClient *network_data);
     friend void *gs_polling_thread(void *);
-
-public:
-    int polling_rate = 1000; // POLL frame sent to the server every this-many milliseconds.
 };
 
 class NetClient : public NetData
@@ -153,13 +174,12 @@ public:
     int client_addrlen = sizeof(client_addr);
 
     friend class NetDataServer;
-    friend class NetFrame;
 
 protected:
     NetDataServer *serv = nullptr;
 };
 
-class NetDataServer : public NetData
+class NetDataServer
 {
 private:
     NetClient *clients = nullptr;
@@ -168,6 +188,7 @@ private:
     bool listen_done = false;
     pthread_t accept_thread;
     sha1_hash_t *auth_token = nullptr;
+    NetVertex origin = 0;
 
     friend void *gs_accept_thread(void *);
     friend int gs_accept(NetDataServer *, int);
@@ -189,6 +210,7 @@ public:
      */
     int GetNumClients() { return num_clients; };
     NetClient *GetClient(int id);
+    NetClient *GetClient(NetVertex v);
     int open_ssl_conn();
     const sha1_hash_t *GetAuthToken() const { return auth_token; };
 };
@@ -199,12 +221,15 @@ typedef union
     {
         uint32_t guid;
         int32_t type;
-        int32_t origin;
-        int32_t destination;
+        int32_t status;
+        uint32_t origin;
+        uint32_t destination;
         int32_t payload_size;
+        int32_t payload_type;
+        uint16_t unused;
         uint16_t crc1;
     };
-    uint8_t bytes[22];
+    uint8_t bytes[32];
 } NetFrameHeader;
 
 typedef union
@@ -212,10 +237,9 @@ typedef union
     struct __attribute__((packed))
     {
         uint16_t crc2;
-        uint8_t netstat;
         uint16_t termination;
     };
-    uint8_t bytes[5];
+    uint8_t bytes[4];
 } NetFrameFooter;
 
 class NetFrame
@@ -240,7 +264,7 @@ public:
      * @param type 
      * @param dest 
      */
-    NetFrame(void *payload, ssize_t size, NetType type, NetVertex destination);
+    NetFrame(void *payload, ssize_t size, int payload_type, NetType type, FrameStatus status, NetVertex destination);
 
     /** DESTRUCTOR
      * @brief Frees payload and zeroes payload size.
@@ -272,8 +296,6 @@ public:
      */
     ssize_t recvFrame(NetData *network_data);
 
-    ssize_t recvFrame(NetClient *network_data);
-
     /**
      * @brief Checks the validity of itself.
      * 
@@ -287,27 +309,19 @@ public:
      */
     void print();
 
-    /**
-     * @brief Print network status.
-     * 
-     */
-    void printNetstat();
-
-    // This exists because 'setting' is restrictive.
-    int setNetstat(uint8_t netstat);
-
     // These exist because 'setting' is restrictive.
     NetType getType() { return (NetType)hdr->type; };
     NetVertex getOrigin() { return hdr->origin; };
     NetVertex getDestination() { return hdr->destination; };
     int getPayloadSize() { return hdr->payload_size; };
+    int getPayloadType() { return hdr->payload_type; };
+    FrameStatus getStatus() { return (FrameStatus)hdr->status; };
     /**
      * @brief Get the Frame Size of the NetFrame (applicable only for sendFrame())
      * 
      * @return ssize_t Frame size of sendFrame(), should be checked against the return value of sendFrame()
      */
-    ssize_t getFrameSize() { return frame_size; }
-    uint8_t getNetstat() { return ftr->netstat; };
+    ssize_t getFrameSize() { return frame_size; };
 
 private:
     // Sendable Data

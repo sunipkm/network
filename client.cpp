@@ -17,14 +17,11 @@ int main(int argc, char *argv[])
     signal(SIGINT, sighandler);
     signal(SIGPIPE, SIG_IGN);
     sha1_hash_t *auth_token = new sha1_hash_t("Hello world", 12);
-    NetDataClient *conn = new NetDataClient("127.0.0.1", 52000, 1000);
-    std::cout << "Connecting to server: " << gs_connect_to_server(conn) << std::endl;
+    NetDataClient *conn = new NetDataClient("127.0.0.1", 52000, auth_token, 1000, 0x21, 0xfe);
+    std::cout << "Connecting to server: " << conn->ConnectToServer() << std::endl;
     pthread_t poll_thread;
-    std::cout << "Server vertex: " << conn->GetServerVertex() << std::endl;
-    std::cout << "Client vertex: " << conn->GetVertex() << std::endl;
-    sleep(1);
-    printf("SSL request %s\n", conn->RequestSSL(auth_token) > 0 ? "granted" : "denied");
-    delete auth_token;
+    std::cout << "Server vertex: " << std::hex << conn->GetServerVertex() << std::endl;
+    std::cout << "Client vertex: " << conn->GetVertex() << std::dec << std::endl;
     sleep(1);
     if (pthread_create(&poll_thread, NULL, gs_polling_thread, conn) < 0)
     {
