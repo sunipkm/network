@@ -1,5 +1,5 @@
 #include <iostream>
-#include "network.hpp"
+#include "network_client.hpp"
 #include <pthread.h>
 #include <unistd.h>
 #include <signal.h>

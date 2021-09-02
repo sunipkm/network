@@ -1,5 +1,5 @@
 /**
- * @file network.hpp
+ * @file network_common.hpp
  * @author Mit Bailey (mitbailey99@gmail.com)
  * @brief 
  * @version See Git tags for version information.
@@ -100,7 +100,7 @@ typedef uint8_t ClientID;
 
 typedef uint16_t NetPort;
 
-class NetDataServer;
+// class NetDataServer;
 
 class NetData
 {
@@ -122,98 +122,98 @@ protected:
     NetData(){};
 };
 
-class NetDataClient : public NetData
-{
-private:
-    char ip_addr[16];
-    NetVertex server_vertex;
-    struct sockaddr_in server_ip[1];
-    char disconnect_reason[64];
-    int polling_rate = 5000; // POLL frame sent to the server every this-many milliseconds.
-    sha1_hash_t *auth_token = nullptr;
-    bool recv_active = false;
+// class NetDataClient : public NetData
+// {
+// private:
+//     char ip_addr[16];
+//     NetVertex server_vertex;
+//     struct sockaddr_in server_ip[1];
+//     char disconnect_reason[64];
+//     int polling_rate = 5000; // POLL frame sent to the server every this-many milliseconds.
+//     sha1_hash_t *auth_token = nullptr;
+//     bool recv_active = false;
 
-    int OpenSSLConn();
-    void CloseSSLConn() {NetData *d = (NetData *) this; d->CloseSSLConn();};
-    void Close() {NetData *d = (NetData *) this; d->Close();};
+//     int OpenSSLConn();
+//     void CloseSSLConn() {NetData *d = (NetData *) this; d->CloseSSLConn();};
+//     void Close() {NetData *d = (NetData *) this; d->Close();};
 
-public:
-    NetDataClient(const char *ip_addr, NetPort server_port, sha1_hash_t *auth, int polling_rate = 5000, ClientClass dclass = 0, ClientID did = 0);
-    const char *GetIP() const { return ip_addr; }
-    const char *GetDisconnectReason() const { return disconnect_reason; };
-    NetVertex GetVertex() const { return origin; }
-    NetVertex GetServerVertex() const { return server_vertex; }
-    int GetPollingRate() const { return polling_rate / 1000; };
-    int SetPollingRate(int prate)
-    {
-        prate *= 1000;
-        if (prate < 1000)
-            prate = 1000;
-        else if (prate > 30000)
-            prate = 30000;
-        polling_rate = prate;
-        return polling_rate / 1000;
-    };
-    void StopPolling() { recv_active = false; };
+// public:
+//     NetDataClient(const char *ip_addr, NetPort server_port, sha1_hash_t *auth, int polling_rate = 5000, ClientClass dclass = 0, ClientID did = 0);
+//     const char *GetIP() const { return ip_addr; }
+//     const char *GetDisconnectReason() const { return disconnect_reason; };
+//     NetVertex GetVertex() const { return origin; }
+//     NetVertex GetServerVertex() const { return server_vertex; }
+//     int GetPollingRate() const { return polling_rate / 1000; };
+//     int SetPollingRate(int prate)
+//     {
+//         prate *= 1000;
+//         if (prate < 1000)
+//             prate = 1000;
+//         else if (prate > 30000)
+//             prate = 30000;
+//         polling_rate = prate;
+//         return polling_rate / 1000;
+//     };
+//     void StopPolling() { recv_active = false; };
 
-    ~NetDataClient();
+//     ~NetDataClient();
 
-    int ConnectToServer();
+//     int ConnectToServer();
 
-    friend int gs_connect_to_server(NetDataClient *network_data);
-    friend void *gs_polling_thread(void *);
-};
+//     friend int gs_connect_to_server(NetDataClient *network_data);
+//     friend void *gs_polling_thread(void *);
+// };
 
-class NetClient : public NetData
-{
-public:
-    ~NetClient();
+// class NetClient : public NetData
+// {
+// public:
+//     ~NetClient();
 
-    int client_id;
-    struct sockaddr_in client_addr;
-    int client_addrlen = sizeof(client_addr);
+//     int client_id;
+//     struct sockaddr_in client_addr;
+//     int client_addrlen = sizeof(client_addr);
 
-    friend class NetDataServer;
+//     friend class NetDataServer;
 
-protected:
-    NetDataServer *serv = nullptr;
-};
+// protected:
+//     NetDataServer *serv = nullptr;
+// };
 
-class NetDataServer
-{
-private:
-    NetClient *clients = nullptr;
-    int num_clients;
-    int fd;
-    bool listen_done = false;
-    pthread_t accept_thread;
-    sha1_hash_t *auth_token = nullptr;
-    NetVertex origin = 0;
+// class NetDataServer
+// {
+// private:
+//     NetClient *clients = nullptr;
+//     int num_clients;
+//     int fd;
+//     bool listen_done = false;
+//     pthread_t accept_thread;
+//     sha1_hash_t *auth_token = nullptr;
+//     NetVertex origin = 0;
 
-    friend void *gs_accept_thread(void *);
-    friend int gs_accept(NetDataServer *, int);
+//     friend void *gs_accept_thread(void *);
+//     friend int gs_accept(NetDataServer *, int);
 
-    void _NetDataServer(NetPort listening_port, int clients);
+//     void _NetDataServer(NetPort listening_port, int clients);
 
-public:
-    NetDataServer(NetPort listening_port, int clients);
-    NetDataServer(NetPort listening_port, int clients, sha1_hash_t auth_token);
-    ~NetDataServer();
-    /**
-     * @brief Stop accepting new connections
-     * 
-     */
-    void StopAccept() { listen_done = true; };
-    /**
-     * @brief Get the number of clients supported
-     * @return int 
-     */
-    int GetNumClients() { return num_clients; };
-    NetClient *GetClient(int id);
-    NetClient *GetClient(NetVertex v);
-    int open_ssl_conn();
-    const sha1_hash_t *GetAuthToken() const { return auth_token; };
-};
+// public:
+//     NetDataServer(NetPort listening_port, int clients);
+//     NetDataServer(NetPort listening_port, int clients, sha1_hash_t auth_token);
+//     ~NetDataServer();
+//     /**
+//      * @brief Stop accepting new connections
+//      * 
+//      */
+//     void StopAccept() { listen_done = true; };
+//     /**
+//      * @brief Get the number of clients supported
+//      * @return int 
+//      */
+//     int GetNumClients() { return num_clients; };
+//     NetClient *GetClient(int id);
+//     NetClient *GetClient(NetVertex v);
+//     int open_ssl_conn();
+//     const sha1_hash_t *GetAuthToken() const { return auth_token; };
+// };
 
 typedef union
 {
@@ -333,40 +333,17 @@ private:
     ssize_t frame_size; // Set to the number of bytes that should have sent during the last .sendFrame(...).
 };
 
-/**
- * @brief Periodically polls the Ground Station Network Server for its status.
- * 
- * Doubles as the GS Network connection watch-dog, tries to restablish connection to the server if it sees that we are no longer connected.
- * 
- * @param args 
- * @return void* 
- */
-void *gs_polling_thread(void *args);
+// /**
+//  * @brief Periodically polls the Ground Station Network Server for its status.
+//  * 
+//  * Doubles as the GS Network connection watch-dog, tries to restablish connection to the server if it sees that we are no longer connected.
+//  * 
+//  * @param args 
+//  * @return void* 
+//  */
+// void *gs_polling_thread(void *args);
 
-void *gs_accept_thread(void *args);
-
-/**
- * @brief 
- * 
- * @param network_data 
- * @return int 
- */
-int gs_connect_to_server(NetDataClient *network_data);
-
-/**
- * @brief 
- * 
- * From:
- * https://github.com/sunipkmukherjee/comic-mon/blob/master/guimain.cpp
- * with minor modifications.
- * 
- * @param socket 
- * @param address 
- * @param socket_size 
- * @param tout_s 
- * @return int 
- */
-int gs_connect(int socket, const struct sockaddr *address, socklen_t socket_size, int tout_s);
+// void *gs_accept_thread(void *args);
 
 /*
  * this is the CCITT CRC 16 polynomial X^16  + X^12  + X^5  + 1.
