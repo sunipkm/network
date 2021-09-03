@@ -13,15 +13,19 @@
 #include <cstring>
 #include <stdexcept>
 #include <stdint.h>
-#include <unistd.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <new>
+
+#include "network_common.hpp"
+#ifndef NETWORK_WINDOWS
+#include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#endif
+
 #include <time.h>
 #include <assert.h>
-#include "network_common.hpp"
 #include "meb_debug.hpp"
 #ifdef __linux__
 #include <signal.h>
@@ -37,6 +41,7 @@
 static int ssl_lib_init = 0;
 
 int gs_connect(int socket, const struct sockaddr *address, socklen_t socket_size, int tout_s)
+#ifndef NETWORK_WINDOWS
 {
     int res;
     long arg;
@@ -138,6 +143,14 @@ int gs_connect(int socket, const struct sockaddr *address, socklen_t socket_size
     }
     return socket;
 }
+#else
+{
+    SOCKET temp = connect(socket, address, socket_size);
+    if (temp == INVALID_SOCKET)
+        return -1;
+    return temp;
+}
+#endif
 
 void InitializeSSLLibrary()
 {
@@ -148,6 +161,14 @@ void InitializeSSLLibrary()
         OpenSSL_add_all_algorithms();
 #ifdef __linux__
         signal(SIGPIPE, SIG_IGN);
+#endif
+#ifdef NETWORK_WINDOWS
+        WSADATA wsaData;
+        int ret = WSAStartup(MAKEWORD(2, 2), &wsaData);
+        if (ret != 0)
+        {
+            dbprintlf(FATAL "WSAStartup failed with error: %d", ret);
+        }
 #endif
     }
 }
@@ -173,6 +194,9 @@ void DestroySSL()
     {
         ERR_free_strings();
         EVP_cleanup();
+#ifdef NETWORK_WINDOWS
+        WSACleanup();
+#endif
     }
 }
 
@@ -189,6 +213,7 @@ int NetDataClient::OpenSSLConn()
         int ssl_err = SSL_connect(cssl);
         if (ssl_err <= 0)
         {
+            dbprintlf("SSL error %d, %d", ssl_err, SSL_get_error(cssl, ssl_err));
             CloseSSLConn();
             return -1;
         }
@@ -235,8 +260,12 @@ NetDataClient::NetDataClient(const char *ip_addr, NetPort server_port, sha1_hash
     auth_token->copy(auth->bytes);
     this->polling_rate = polling_rate;
     strcpy(disconnect_reason, "N/A");
+    memset(server_ip, 0x0, sizeof(struct sockaddr_in));
     server_ip->sin_family = AF_INET;
     server_ip->sin_port = htons((int)server_port);
+#ifdef NETWORK_WINDOWS
+    server_ip->sin_addr.s_addr = inet_addr(ip_addr);
+#endif
     devclass = dclass;
     devId = did;
     origin = ((uint32_t)dclass << 8) | ((uint32_t)did);
@@ -255,11 +284,13 @@ int NetDataClient::ConnectToServer()
         dbprintlf(RED_FG "Socket creation error.");
         connect_status = -1;
     }
+#ifndef NETWORK_WINDOWS
     else if (inet_pton(AF_INET, ip_addr, &server_ip->sin_addr) <= 0)
     {
         dbprintlf(RED_FG "Invalid address; address not supported.");
         connect_status = -2;
     }
+#endif
     else if (gs_connect(_socket, (struct sockaddr *)server_ip, sizeof(server_ip), 1) < 0)
     {
         dbprintlf(RED_FG "Connection failure.");
@@ -282,8 +313,10 @@ int NetDataClient::ConnectToServer()
     timeout.tv_usec = 0;
     setsockopt(_socket, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof timeout); // connection timeout set
     int set = 1;
-#ifndef __linux__
+#if !defined(__linux__)
+#if !defined(NETWORK_WINDOWS)
     setsockopt(_socket, SOL_SOCKET, SO_NOSIGPIPE, &set, sizeof(set));
+#endif
 #endif
     int retval;
     NetVertex server_v = 0;
@@ -359,6 +392,7 @@ int NetDataClient::ConnectToServer()
     return connect_status;
 }
 
+#ifndef NETWORK_WINDOWS
 void *gs_polling_thread(void *args)
 {
     dbprintlf(BLUE_FG "Beginning polling thread.");
@@ -386,3 +420,31 @@ void *gs_polling_thread(void *args)
     dbprintlf(FATAL "GS_POLLING_THREAD IS EXITING!");
     return nullptr;
 }
+#else
+DWORD WINAPI gs_polling_thread(LPVOID args)
+{
+    dbprintlf(BLUE_FG "Beginning polling thread.");
+    NetDataClient *network_data = (NetDataClient *)args;
+    Sleep(1000); // 1 second
+    while (network_data->recv_active)
+    {
+        if (network_data->connection_ready)
+        {
+            NetFrame *frame = new NetFrame(NULL, 0, 0, NetType::POLL, FrameStatus::NONE, network_data->server_vertex);
+            frame->sendFrame(network_data);
+            frame->print();
+            delete frame;
+        }
+        else
+        {
+            dbprintlf("Connect to server from poll");
+            network_data->ConnectToServer();
+        }
+        if (network_data->polling_rate < 1000)
+            network_data->polling_rate = 1000; // minimum 1s
+        Sleep(network_data->polling_rate);     // already in ms
+    }
+    dbprintlf(FATAL "GS_POLLING_THREAD exiting");
+    return 0;
+}
+#endif

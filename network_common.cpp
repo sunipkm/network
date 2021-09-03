@@ -9,19 +9,21 @@
  * 
  */
 
+#include "network_common.hpp"
 #include <cstdio>
 #include <cstring>
 #include <stdexcept>
 #include <stdint.h>
-#include <unistd.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <new>
+#ifndef NETWORK_WINDOWS
+#include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#endif
 #include <time.h>
 #include <assert.h>
-#include "network_common.hpp"
 #include "meb_debug.hpp"
 #ifdef __linux__
 #include <signal.h>
@@ -47,7 +49,11 @@ void NetData::Close()
 {
     CloseSSLConn();
     connection_ready = false;
+#ifndef NETWORK_WINDOWS
     close(_socket);
+#else
+    closesocket(_socket);
+#endif
     _socket = -1;
 }
 
@@ -188,7 +194,11 @@ ssize_t NetFrame::sendFrame(NetData *network_data)
     if (network_data->ssl_ready && network_data->cssl != NULL)
         send_size = SSL_write(network_data->cssl, buffer, malloc_size);
     else
+#ifndef NETWORK_WINDOWS
         send_size = send(network_data->_socket, buffer, malloc_size, MSG_NOSIGNAL);
+#else
+        send_size = send(network_data->_socket, (char *)buffer, malloc_size, 0);
+#endif
 
     if (send_size < 0)
     {
@@ -229,7 +239,11 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
         if (network_data->ssl_ready && network_data->cssl != NULL)
             sz = SSL_read(network_data->cssl, header.bytes + offset, 1);
         else
+#ifdef NETWORK_WINDOWS
+            sz = recv(network_data->_socket, (char *)header.bytes + offset, 1, MSG_WAITALL);
+#else
             sz = recv(network_data->_socket, header.bytes + offset, 1, MSG_WAITALL);
+#endif
         if (sz < 0)
         {
             // Connection broken.
@@ -263,7 +277,11 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
         if (network_data->ssl_ready && network_data->cssl != NULL)
             sz = SSL_read(network_data->cssl, header.bytes + offset, sizeof(NetFrameHeader) - offset);
         else
-            sz = recv(network_data->_socket, header.bytes + offset, sizeof(NetFrameHeader) - offset, MSG_WAITALL);
+#ifdef NETWORK_WINDOWS
+            sz = recv(network_data->_socket, (char *)header.bytes + offset, 1, MSG_WAITALL);
+#else
+            sz = recv(network_data->_socket, header.bytes + offset, 1, MSG_WAITALL);
+#endif
         if (sz < 0)
             break;
         if (sz == 0)
@@ -324,7 +342,11 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
         if (network_data->ssl_ready && network_data->cssl != NULL)
             sz = SSL_read(network_data->cssl, this->payload + offset, payload_buffer_size - offset);
         else
-            sz = recv(network_data->_socket, this->payload + offset, payload_buffer_size - offset, MSG_WAITALL);
+#ifdef NETWORK_WINDOWS
+            sz = recv(network_data->_socket, (char *)this->payload + offset, 1, MSG_WAITALL);
+#else
+            sz = recv(network_data->_socket, this->payload + offset, 1, MSG_WAITALL);
+#endif
         if (sz < 0)
         {
             network_data->Close();
@@ -355,7 +377,11 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
         if (network_data->ssl_ready && network_data->cssl != NULL)
             sz = SSL_read(network_data->cssl, footer.bytes + offset, sizeof(NetFrameFooter) - offset);
         else
-            sz = recv(network_data->_socket, footer.bytes + offset, sizeof(NetFrameFooter) - offset, MSG_WAITALL);
+#ifdef NETWORK_WINDOWS
+            sz = recv(network_data->_socket, (char *)footer.bytes + offset, 1, MSG_WAITALL);
+#else
+            sz = recv(network_data->_socket, footer.bytes + offset, 1, MSG_WAITALL);
+#endif
         if (sz < 0)
         {
             network_data->Close();

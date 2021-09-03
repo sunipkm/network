@@ -9,6 +9,10 @@
  * 
  */
 
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+#error "Server is not supported on Windows OS"
+#endif
+
 #include <cstdio>
 #include <cstring>
 #include <stdexcept>

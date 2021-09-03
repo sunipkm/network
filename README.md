@@ -94,3 +94,8 @@ enum class NetType
 ```
 ## NetVertex
 _A point within the network._
+
+## Win32 Port
+Read: 
+1. https://docs.microsoft.com/en-us/windows/win32/winsock/complete-client-code
+1. https://gist.github.com/AhnMo/d288652b13cec77bf89b39186d07bf28

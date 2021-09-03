@@ -12,9 +12,29 @@
 #ifndef NETWORK_HPP
 #define NETWORK_HPP
 
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+#define NETWORK_WINDOWS
+typedef int ssize_t;
+#define WIN32_LEAN_AND_MEAN
+
+#include <stdio.h>
+#include <windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <stdlib.h>
+
+#pragma comment (lib, "Ws2_32.lib")
+#pragma comment (lib, "Mswsock.lib")
+#pragma comment (lib, "AdvApi32.lib")
+#pragma comment (lib, "crypt32")
+#pragma comment (lib, "libcrypto_static.lib")
+#pragma comment (lib, "libssl_static.lib")
+
+#else
 #include <arpa/inet.h>
-#include <stdint.h>
 #include <pthread.h>
+#endif
+#include <stdint.h>
 #include <openssl/ssl.h>
 #include <openssl/sha.h>
 #include <string.h>
@@ -105,7 +125,11 @@ typedef uint16_t NetPort;
 class NetData
 {
 public:
+// #ifndef NETWORK_WINDOWS
     int _socket = -1;
+// #else
+    // SOCKET _socket = INVALID_SOCKET;
+// #endif
     bool connection_ready = false;
     NetVertex origin;
     bool server = false;
@@ -122,102 +146,16 @@ protected:
     NetData(){};
 };
 
-// class NetDataClient : public NetData
-// {
-// private:
-//     char ip_addr[16];
-//     NetVertex server_vertex;
-//     struct sockaddr_in server_ip[1];
-//     char disconnect_reason[64];
-//     int polling_rate = 5000; // POLL frame sent to the server every this-many milliseconds.
-//     sha1_hash_t *auth_token = nullptr;
-//     bool recv_active = false;
-
-//     int OpenSSLConn();
-//     void CloseSSLConn() {NetData *d = (NetData *) this; d->CloseSSLConn();};
-//     void Close() {NetData *d = (NetData *) this; d->Close();};
-
-// public:
-//     NetDataClient(const char *ip_addr, NetPort server_port, sha1_hash_t *auth, int polling_rate = 5000, ClientClass dclass = 0, ClientID did = 0);
-//     const char *GetIP() const { return ip_addr; }
-//     const char *GetDisconnectReason() const { return disconnect_reason; };
-//     NetVertex GetVertex() const { return origin; }
-//     NetVertex GetServerVertex() const { return server_vertex; }
-//     int GetPollingRate() const { return polling_rate / 1000; };
-//     int SetPollingRate(int prate)
-//     {
-//         prate *= 1000;
-//         if (prate < 1000)
-//             prate = 1000;
-//         else if (prate > 30000)
-//             prate = 30000;
-//         polling_rate = prate;
-//         return polling_rate / 1000;
-//     };
-//     void StopPolling() { recv_active = false; };
-
-//     ~NetDataClient();
-
-//     int ConnectToServer();
-
-//     friend int gs_connect_to_server(NetDataClient *network_data);
-//     friend void *gs_polling_thread(void *);
-// };
-
-// class NetClient : public NetData
-// {
-// public:
-//     ~NetClient();
-
-//     int client_id;
-//     struct sockaddr_in client_addr;
-//     int client_addrlen = sizeof(client_addr);
-
-//     friend class NetDataServer;
-
-// protected:
-//     NetDataServer *serv = nullptr;
-// };
-
-// class NetDataServer
-// {
-// private:
-//     NetClient *clients = nullptr;
-//     int num_clients;
-//     int fd;
-//     bool listen_done = false;
-//     pthread_t accept_thread;
-//     sha1_hash_t *auth_token = nullptr;
-//     NetVertex origin = 0;
-
-//     friend void *gs_accept_thread(void *);
-//     friend int gs_accept(NetDataServer *, int);
-
-//     void _NetDataServer(NetPort listening_port, int clients);
-
-// public:
-//     NetDataServer(NetPort listening_port, int clients);
-//     NetDataServer(NetPort listening_port, int clients, sha1_hash_t auth_token);
-//     ~NetDataServer();
-//     /**
-//      * @brief Stop accepting new connections
-//      * 
-//      */
-//     void StopAccept() { listen_done = true; };
-//     /**
-//      * @brief Get the number of clients supported
-//      * @return int 
-//      */
-//     int GetNumClients() { return num_clients; };
-//     NetClient *GetClient(int id);
-//     NetClient *GetClient(NetVertex v);
-//     int open_ssl_conn();
-//     const sha1_hash_t *GetAuthToken() const { return auth_token; };
-// };
-
+#ifdef NETWORK_WINDOWS
+#pragma pack(1)
+#endif
 typedef union
 {
+#ifndef NETWORK_WINDOWS
     struct __attribute__((packed))
+#else
+    struct
+#endif
     {
         uint32_t guid;
         int32_t type;
@@ -232,9 +170,16 @@ typedef union
     uint8_t bytes[32];
 } NetFrameHeader;
 
+#ifdef NETWORK_WINDOWS
+#pragma pack(1)
+#endif
 typedef union
 {
+#ifndef NETWORK_WINDOWS
     struct __attribute__((packed))
+#else
+    struct
+#endif
     {
         uint16_t crc2;
         uint16_t termination;
@@ -332,18 +277,6 @@ private:
     // Non-sendable Data (invisible to .sendFrame(...) and .recvFrame(...))
     ssize_t frame_size; // Set to the number of bytes that should have sent during the last .sendFrame(...).
 };
-
-// /**
-//  * @brief Periodically polls the Ground Station Network Server for its status.
-//  * 
-//  * Doubles as the GS Network connection watch-dog, tries to restablish connection to the server if it sees that we are no longer connected.
-//  * 
-//  * @param args 
-//  * @return void* 
-//  */
-// void *gs_polling_thread(void *args);
-
-// void *gs_accept_thread(void *args);
 
 /*
  * this is the CCITT CRC 16 polynomial X^16  + X^12  + X^5  + 1.

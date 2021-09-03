@@ -12,13 +12,16 @@
 #ifndef NETWORK_CLIENT_HPP
 #define NETWORK_CLIENT_HPP
 
-#include <arpa/inet.h>
+#include "network_common.hpp"
+
 #include <stdint.h>
+#ifndef NETWORK_WINDOWS
+#include <arpa/inet.h>
 #include <pthread.h>
+#endif
 #include <openssl/ssl.h>
 #include <openssl/sha.h>
 #include <string.h>
-#include "network_common.hpp"
 
 class NetDataClient : public NetData
 {
@@ -57,8 +60,11 @@ public:
     ~NetDataClient();
 
     int ConnectToServer();
-
+#ifndef NETWORK_WINDOWS
     friend void *gs_polling_thread(void *);
+#else
+    friend DWORD WINAPI gs_polling_thread(LPVOID);
+#endif
 };
 
 /**
@@ -69,6 +75,10 @@ public:
  * @param args 
  * @return void* 
  */
+#ifndef NETWORK_WINDOWS
 void *gs_polling_thread(void *args);
+#else
+DWORD WINAPI gs_polling_thread(LPVOID args);
+#endif
 
 #endif // NETWORK_CLIENT_HPP
