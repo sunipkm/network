@@ -12,30 +12,31 @@
 #ifndef MEB_DEBUG_HPP
 #define MEB_DEBUG_HPP
 
-#ifndef dbprintlf
-#define dbprintlf(format, ...)                                                                            \
-    {                                                                                                     \
-        fprintf(stderr, "[%s:%d | %s] " format "\x1b[0m\n", __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
-        fflush(stderr);                                                                                   \
-    }
-#endif // dbprintlf
+#ifdef WIN32_LEAN_AND_MEAN
+#define TERMINATOR
+#ifndef MEB_COLORS
+#define MEB_COLORS
+#define RESET_ALL 
+#define RED_FG
+#define GREEN_FG 
+#define YELLOW_FG
+#define BLUE_FG
+#define MAGENTA_FG
+#define CYAN_FG
+#define RED_BG
+#define GREEN_BG
+#define YELLOW_BG
+#define BLUE_BG
+#define MAGENTA_BG
+#define CYAN_BG
+#endif // MEB_COLORS
 
-#ifndef dbprintf
-#define dbprintf(format, ...)                                                                           \
-    {                                                                                                   \
-        fprintf(stderr, "[%s:%d | %s] " format "\x1b[0m", __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
-        fflush(stderr);                                                                                 \
-    }
-#endif // dbprintf
-
-#ifndef erprintlf
-#define erprintlf(error)                                                                                                   \
-    {                                                                                                                      \
-        fprintf(stderr, "[%s:%d | %s] \x1b[94m>>> %d: %s\x1b[0m\n", __FILE__, __LINE__, __func__, error, strerror(error)); \
-        fflush(stderr);                                                                                                    \
-    }
-#endif // erprintlf
-
+#ifndef MEB_CODES
+#define MEB_CODES
+#define FATAL "\033[1m\x1b[107m\x1b[31m(FATAL) "
+#endif // MEB_CODES
+#else
+#define TERMINATOR "\x1b[0m"
 #ifndef MEB_COLORS
 #define MEB_COLORS
 #define RESET_ALL "\x1b[0m"
@@ -57,5 +58,33 @@
 #define MEB_CODES
 #define FATAL "\033[1m\x1b[107m\x1b[31m(FATAL) "
 #endif // MEB_CODES
+#endif
+
+#ifndef dbprintlf
+#define dbprintlf(format, ...)                                                                                \
+    {                                                                                                         \
+        fprintf(stderr, "[%s:%d | %s] " format TERMINATOR "\n", __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
+        fflush(stderr);                                                                                       \
+    }
+#endif // dbprintlf
+
+#ifndef dbprintf
+#define dbprintf(format, ...)                                                                            \
+    {                                                                                                    \
+        fprintf(stderr, "[%s:%d | %s] " format TERMINATOR, __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
+        fflush(stderr);                                                                                  \
+    }
+#endif // dbprintf
+
+#ifndef erprintlf
+#define erprintlf(error)                                               \
+    {                                                                  \
+        fprintf(stderr, "[%s:%d | %s] "                                \
+                        BLUE_FG                                     \
+                        ">>> %d: %s" TERMINATOR "\n",                  \
+                __FILE__, __LINE__, __func__, error, strerror(error)); \
+        fflush(stderr);                                                \
+    }
+#endif // erprintlf
 
 #endif // MEB_DEBUG_HPP

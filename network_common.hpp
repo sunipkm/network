@@ -125,11 +125,11 @@ typedef uint16_t NetPort;
 class NetData
 {
 public:
-// #ifndef NETWORK_WINDOWS
+#ifndef NETWORK_WINDOWS
     int _socket = -1;
-// #else
-    // SOCKET _socket = INVALID_SOCKET;
-// #endif
+#else
+    SOCKET _socket = INVALID_SOCKET;
+#endif
     bool connection_ready = false;
     NetVertex origin;
     bool server = false;

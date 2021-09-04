@@ -9,23 +9,21 @@
  * 
  */
 
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
-#error "Server is not supported on Windows OS"
-#endif
-
 #include <cstdio>
 #include <cstring>
 #include <stdexcept>
 #include <stdint.h>
-#include <unistd.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <new>
-#include <sys/socket.h>
-#include <netinet/in.h>
 #include <time.h>
 #include <assert.h>
 #include "network_common.hpp"
+#ifndef NETWORK_WINDOWS
+#include <unistd.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#endif
 #include "meb_debug.hpp"
 #ifdef __linux__
 #include <signal.h>
@@ -48,6 +46,14 @@ void InitializeSSLLibrary()
         OpenSSL_add_all_algorithms();
 #ifdef __linux__
         signal(SIGPIPE, SIG_IGN);
+#endif
+#ifdef NETWORK_WINDOWS
+        WSADATA wsaData;
+        int ret = WSAStartup(MAKEWORD(2, 2), &wsaData);
+        if (ret != 0)
+        {
+            dbprintlf(FATAL "WSAStartup failed with error: %d", ret);
+        }
 #endif
     }
 }
@@ -78,6 +84,9 @@ void DestroySSL()
     {
         ERR_free_strings();
         EVP_cleanup();
+#ifdef NETWORK_WINDOWS
+        WSACleanup();
+#endif
     }
 }
 
@@ -90,7 +99,11 @@ NetClient::~NetClient()
     DestroySSL();
 }
 
+#ifndef NETWORK_WINDOWS
 void *gs_accept_thread(void *args)
+#else
+DWORD WINAPI gs_accept_thread(LPVOID args)
+#endif
 {
     NetDataServer *serv = (NetDataServer *)args;
     while (!serv->listen_done)
@@ -99,7 +112,11 @@ void *gs_accept_thread(void *args)
         {
             gs_accept(serv, i);
         }
+#ifdef NETWORK_WINDOWS
+        Sleep(1000);
+#else
         sleep(1);
+#endif
     }
     return NULL;
 }
@@ -134,22 +151,22 @@ void NetDataServer::_NetDataServer(NetPort listening_port, int clients)
     int opt = 1;
     // Forcefully attaching socket to the port 8080
     if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
-                   &opt, sizeof(opt)))
+                   (char *)&opt, sizeof(opt)))
     {
         dbprintlf("setsockopt reuseaddr");
         throw std::invalid_argument("setsockopt reuseaddr");
     }
-
+#ifndef NETWORK_WINDOWS
     if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT,
                    &opt, sizeof(opt)))
     {
         dbprintlf("setsockopt reuseport");
         throw std::invalid_argument("setsockopt reuseport");
     }
-
     int flags = fcntl(fd, F_GETFL, 0);
     assert(flags != -1);
     fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+#endif
 
     // Forcefully attaching socket to the port 8080
     struct sockaddr_in address;
@@ -190,8 +207,13 @@ void NetDataServer::_NetDataServer(NetPort listening_port, int clients)
             dbprintlf(FATAL "Failed to initialize SSL context for client %d", i);
         }
     }
-
+#ifndef NETWORK_WINDOWS
     if (pthread_create(&accept_thread, NULL, gs_accept_thread, this) != 0)
+#else
+    DWORD threadId = 0;
+    accept_thread = CreateThread(NULL, 0, gs_accept_thread, this, 0, &threadId);
+    if (accept_thread == INVALID_HANDLE_VALUE)
+#endif
     {
         dbprintlf("Could not start accept thread");
     }
@@ -218,14 +240,22 @@ NetClient *NetDataServer::GetClient(NetVertex v)
 
 NetDataServer::~NetDataServer()
 {
+#ifndef NETWORK_WINDOWS
     pthread_cancel(accept_thread);
-
     if (fd > 0)
     {
         close(fd);
         fd = -1;
     }
-
+#else
+    DWORD stat = 0;
+    TerminateThread(accept_thread, stat);
+    if (fd != INVALID_SOCKET)
+    {
+        closesocket(fd);
+        fd = INVALID_SOCKET;
+    }
+#endif
     if (clients != nullptr)
         delete[] clients;
     clients = nullptr;
@@ -261,7 +291,9 @@ int gs_accept(NetDataServer *serv, int client_id)
     client->connection_ready = true;
     int set = 1;
 #ifndef __linux__
+#ifndef NETWORK_WINDOWS
     setsockopt(client->_socket, SOL_SOCKET, SO_NOSIGPIPE, &set, sizeof(set));
+#endif
 #endif
     NetFrame *frame;
     int bytes;
@@ -312,13 +344,11 @@ int gs_accept(NetDataServer *serv, int client_id)
     }
     // Step 4. Assign vertex or hang up
     NetVertex vertices[2];
-    vertices[0] = (
-        {
-            int vertex = rand();
-            while (vertex < 0xffff)
-                vertex = rand();
-            vertex & 0xffff0000;
-        });
+    NetVertex _vertex = rand();
+    while (_vertex < 0xffff)
+        _vertex = rand();
+    _vertex = _vertex & 0xffff0000;
+    vertices[0] = (_vertex);
     vertices[0] |= frame->getOrigin() & 0x7fff;
     client->devclass = frame->getOrigin() >> 8;
     client->devId = frame->getOrigin();
@@ -336,7 +366,11 @@ int gs_accept(NetDataServer *serv, int client_id)
         client->Close();
         return -105;
     }
+#ifndef NETWORK_WINDOWS
     usleep(20000);
+#else
+    Sleep(20);
+#endif
     // Step 5. Receive ack
     int retval;
     frame = new NetFrame();
@@ -424,11 +458,19 @@ int gs_accept_ssl(NetClient *client)
             int err = SSL_get_error(client->cssl, accept_retval);
             if (err == SSL_ERROR_WANT_READ)
             {
+#ifndef NETWORK_WINDOWS
                 usleep(10000);
+#else
+                Sleep(10);
+#endif
             }
             else if (err == SSL_ERROR_WANT_WRITE)
             {
+#ifndef NETWORK_WINDOWS
                 usleep(10000);
+#else
+                Sleep(10);
+#endif
             }
             else if (err == SSL_ERROR_SYSCALL || err == SSL_ERROR_SSL)
             {
@@ -458,4 +500,3 @@ int gs_accept_ssl(NetClient *client)
     client->ssl_ready = true;
     return 1;
 }
-

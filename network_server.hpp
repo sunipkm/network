@@ -12,13 +12,11 @@
 #ifndef NETWORK_SERVER_HPP
 #define NETWORK_SERVER_HPP
 
-#include <arpa/inet.h>
 #include <stdint.h>
-#include <pthread.h>
+#include "network_common.hpp"
 #include <openssl/ssl.h>
 #include <openssl/sha.h>
 #include <string.h>
-#include "network_common.hpp"
 
 class NetDataServer;
 
@@ -42,13 +40,24 @@ class NetDataServer
 private:
     NetClient *clients = nullptr;
     int num_clients;
+#ifndef NETWORK_WINDOWS
     int fd;
+#else
+    SOCKET fd;
+#endif
     bool listen_done = false;
+#ifndef NETWORK_WINDOWS
     pthread_t accept_thread;
+#else
+    HANDLE accept_thread = INVALID_HANDLE_VALUE;
+#endif
     sha1_hash_t *auth_token = nullptr;
     NetVertex origin = 0;
-
+#ifndef NETWORK_WINDOWS
     friend void *gs_accept_thread(void *);
+#else
+    friend DWORD WINAPI gs_accept_thread(LPVOID);
+#endif
     friend int gs_accept(NetDataServer *, int);
 
     void _NetDataServer(NetPort listening_port, int clients);
@@ -69,7 +78,7 @@ public:
     int GetNumClients() { return num_clients; };
     NetClient *GetClient(int id);
     NetClient *GetClient(NetVertex v);
-    int open_ssl_conn();
+    const NetVertex GetVertex() const { return origin; };
     const sha1_hash_t *GetAuthToken() const { return auth_token; };
 };
 

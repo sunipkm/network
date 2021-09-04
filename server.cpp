@@ -1,7 +1,8 @@
 #include <iostream>
 #include "network_server.hpp"
-#include <pthread.h>
+#ifndef NETWORK_WINDOWS
 #include <unistd.h>
+#endif
 #include <signal.h>
 #include "meb_debug.hpp"
 
@@ -17,7 +18,9 @@ int main(int argc, char *argv[])
     sha1_hash_t passwd = sha1_hash_t("Hello world", 12);
     NetDataServer *server = new NetDataServer(52000, 5, passwd);
     signal(SIGINT, sighandler);
+#ifndef NETWORK_WINDOWS
     signal(SIGPIPE, SIG_IGN);
+#endif
     while (!done)
     {
         for (int i = 0; i < server->GetNumClients(); i++)
@@ -32,7 +35,11 @@ int main(int argc, char *argv[])
             }
             delete frame;
         }
+#ifndef NETWORK_WINDOWS
         sleep(1);
+#else
+        Sleep(1000);
+#endif
     }
     delete server;
     return 0;

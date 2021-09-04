@@ -96,6 +96,8 @@ enum class NetType
 _A point within the network._
 
 ## Win32 Port
+Install:
+1. [OpenSSL Binaries](https://slproweb.com/products/Win32OpenSSL.html)
 Read: 
-1. https://docs.microsoft.com/en-us/windows/win32/winsock/complete-client-code
-1. https://gist.github.com/AhnMo/d288652b13cec77bf89b39186d07bf28
+1. [WinSock Client Example](https://docs.microsoft.com/en-us/windows/win32/winsock/complete-client-code)
+1. [WinSock SSL Client Example](https://gist.github.com/AhnMo/d288652b13cec77bf89b39186d07bf28)
