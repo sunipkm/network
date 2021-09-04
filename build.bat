@@ -1,4 +1,4 @@
-@set OUT_DIR=build
+@set OUT_DIR=output
 @set OUT_CLIENT=client
 @set OUT_SERVER=server
 @set INCLUDES= /I .\ /I "%PROGRAMFILES%\OpenSSL-Win32\include" /I "%PROGRAMFILES%\OpenSSL-Win64\include"
@@ -8,3 +8,4 @@
 mkdir %OUT_DIR%
 cl /nologo /Zi /EHsc /O2 /MD %INCLUDES% /D UNICODE /D _UNICODE %SOURCES_CLIENT% /Fe%OUT_DIR%/%OUT_CLIENT%.exe /Fo%OUT_DIR%/ /link %LIBS%
 cl /nologo /Zi /EHsc /O2 /MD %INCLUDES% /D UNICODE /D _UNICODE %SOURCES_SERVER% /Fe%OUT_DIR%/%OUT_SERVER%.exe /Fo%OUT_DIR%/ /link %LIBS%
+@copy *.pem %OUT_DIR%
