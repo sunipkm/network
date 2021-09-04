@@ -14,7 +14,7 @@ void sighandler(int sig)
     done = 1;
 }
 
-#define IP_ADDR "127.0.0.1"
+static char IP_ADDR[16] = "127.0.0.1";
 
 int main(int argc, char *argv[])
 {
