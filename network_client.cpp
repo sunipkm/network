@@ -177,7 +177,7 @@ void InitializeSSLLibrary()
 SSL_CTX *InitializeSSLClient(void)
 {
     InitializeSSLLibrary();
-    SSL_CTX *ctx = SSL_CTX_new(SSLv23_client_method());
+    SSL_CTX *ctx = SSL_CTX_new(TLSv1_2_client_method());
     if (ctx == NULL)
     {
         dbprintlf(FATAL "Could create SSL context");
@@ -294,13 +294,14 @@ int NetDataClient::ConnectToServer()
     }
     else if (gs_connect(_socket, (struct sockaddr *)server_ip, sizeof(server_ip), 1) < 0)
     {
-        dbprintlf(RED_FG "Connection failure.");
+        dbprintlf(FATAL "Connection failure.");
         connect_status = -3;
     }
     else
     {
         connect_status = 1;
         connection_ready = true;
+        dbprintlf(GREEN_FG "Set connection ready");
     }
     if (connect_status < 0)
     {
@@ -359,8 +360,10 @@ int NetDataClient::ConnectToServer()
     delete frame;
     // Step 4. Retrieve assigned vertex
     frame = new NetFrame();
-    for (int i = 0; (i < 20) && (frame->recvFrame(this) < 0); i++)
-        ;
+    for (int i = 0; (i < 20) && (frame->recvFrame(this, i == 19) < 0); i++)
+    {
+        usleep(20000);
+    }
     if (frame->getType() != NetType::SRV)
     {
         dbprintlf("Expecting %d, got %d for frame type", NetType::SRV, frame->getType());

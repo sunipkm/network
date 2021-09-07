@@ -231,7 +231,7 @@ public:
      * 
      * @return ssize_t Zero on success, negative on failure. 
      */
-    ssize_t sendFrame(NetData *network_data);
+    ssize_t sendFrame(NetData *network_data, bool CloseOnFailure = true);
 
     /**
      * @brief Receives data into a NetFrame constructed by NetFrame().
@@ -239,7 +239,7 @@ public:
      * @param network_data Network Data struct 
      * @return ssize_t Number of bytes received on success, negative on failure.
      */
-    ssize_t recvFrame(NetData *network_data);
+    ssize_t recvFrame(NetData *network_data, bool CloseOnFailure = true);
 
     /**
      * @brief Checks the validity of itself.

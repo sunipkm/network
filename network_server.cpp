@@ -61,7 +61,7 @@ void InitializeSSLLibrary()
 SSL_CTX *InitializeSSLServer(void)
 {
     InitializeSSLLibrary();
-    SSL_CTX *ctx = SSL_CTX_new(SSLv23_server_method());
+    SSL_CTX *ctx = SSL_CTX_new(TLSv1_2_server_method());
     if (ctx == NULL)
     {
         dbprintlf(FATAL "Could create SSL context");
@@ -320,8 +320,8 @@ int gs_accept(NetDataServer *serv, int client_id)
     }
     // Step 3. Wait for Auth Token
     frame = new NetFrame();
-    for (int i = 0; (i < 20) && (frame->recvFrame(client) < 0); i++)
-        ;
+    for (int i = 0; (i < 20) && (frame->recvFrame(client, i == 19) < 0); i++)
+        usleep(20000);
     if (frame->getPayloadSize() != SHA512_DIGEST_LENGTH) // not valid size for SHA token
     {
         dbprintlf("Expected %d bytes, received %d bytes", SHA512_DIGEST_LENGTH, frame->getPayloadSize());
@@ -376,9 +376,10 @@ int gs_accept(NetDataServer *serv, int client_id)
     frame = new NetFrame();
     for (int i = 0; i < 20; i++)
     {
-        retval = frame->recvFrame(client);
+        retval = frame->recvFrame(client, i == 19);
         if (retval > 0)
             break;
+        usleep(20000);
     }
     if (retval < 0)
     {

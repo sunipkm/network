@@ -137,7 +137,7 @@ int NetFrame::retrievePayload(void *storage, ssize_t capacity)
     return 1;
 }
 
-ssize_t NetFrame::sendFrame(NetData *network_data)
+ssize_t NetFrame::sendFrame(NetData *network_data, bool CloseOnFailure)
 {
     if (!(network_data->connection_ready))
     {
@@ -200,7 +200,8 @@ ssize_t NetFrame::sendFrame(NetData *network_data)
     if (send_size < 0)
     {
         dbprintlf("Connection closed by server/client\n");
-        network_data->Close();
+        if (CloseOnFailure)
+            network_data->Close();
     }
 
     free(buffer);
@@ -208,13 +209,13 @@ ssize_t NetFrame::sendFrame(NetData *network_data)
     return send_size;
 }
 
-ssize_t NetFrame::recvFrame(NetData *network_data)
+ssize_t NetFrame::recvFrame(NetData *network_data, bool CloseOnFailure)
 {
     ssize_t retval = -1;
 
     if (!(network_data->connection_ready))
     {
-        dbprintlf(YELLOW_FG "Connection is not ready, send aborted.");
+        dbprintlf(YELLOW_FG "Connection is not ready, recv aborted: %d, %p", network_data->connection_ready, network_data);
         return -1;
     }
 
@@ -247,7 +248,8 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
             recv_attempts++;
             if (recv_attempts > 20)
             {
-                network_data->Close();
+                if (CloseOnFailure)
+                    network_data->Close();
                 return -404;
             }
         }
@@ -278,7 +280,8 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
             recv_attempts++;
             if (recv_attempts > 20)
             {
-                network_data->Close();
+                if (CloseOnFailure)
+                    network_data->Close();
                 return -404;
             }
         }
@@ -334,7 +337,8 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
             sz = recv(network_data->_socket, (char *)this->payload + offset, 1, MSG_WAITALL);
         if (sz < 0)
         {
-            network_data->Close();
+            if (CloseOnFailure)
+                network_data->Close();
             return -4;
         }
         if (sz == 0)
@@ -342,7 +346,8 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
             recv_attempts++;
             if (recv_attempts > 20)
             {
-                network_data->Close();
+                if (CloseOnFailure)
+                    network_data->Close();
                 return -404;
             }
         }
@@ -365,7 +370,8 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
             sz = recv(network_data->_socket, (char *)footer.bytes + offset, 1, MSG_WAITALL);
         if (sz < 0)
         {
-            network_data->Close();
+            if (CloseOnFailure)
+                network_data->Close();
             return -4;
         }
         if (sz == 0)
@@ -373,7 +379,8 @@ ssize_t NetFrame::recvFrame(NetData *network_data)
             recv_attempts++;
             if (recv_attempts > 20)
             {
-                network_data->Close();
+                if (CloseOnFailure)
+                    network_data->Close();
                 return -404;
             }
         }
