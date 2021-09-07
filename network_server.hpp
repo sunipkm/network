@@ -14,8 +14,6 @@
 
 #include <stdint.h>
 #include "network_common.hpp"
-#include <openssl/ssl.h>
-#include <openssl/sha.h>
 #include <string.h>
 
 class NetDataServer;

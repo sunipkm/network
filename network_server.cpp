@@ -29,10 +29,6 @@
 #include <signal.h>
 #endif
 
-#include <openssl/bio.h>
-#include <openssl/ssl.h>
-#include <openssl/err.h>
-#include <openssl/sha.h>
 #include "network_server.hpp"
 
 static int ssl_lib_init = 0;

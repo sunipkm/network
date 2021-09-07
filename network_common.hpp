@@ -35,8 +35,10 @@ typedef int ssize_t;
 #include <pthread.h>
 #endif
 #include <stdint.h>
+#include <openssl/bio.h>
 #include <openssl/ssl.h>
 #include <openssl/sha.h>
+#include <openssl/err.h>
 #include <string.h>
 
 #define SERVER_POLL_RATE 5
