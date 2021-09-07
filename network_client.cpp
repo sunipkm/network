@@ -345,6 +345,7 @@ int NetDataClient::ConnectToServer()
     }
     // Step 3. Send Auth Token
     frame = new NetFrame(auth_token->bytes, SHA512_DIGEST_LENGTH, 0, NetType::AUTH, FrameStatus::ACK, server_v);
+    usleep(20000);
     if (frame->sendFrame(this) <= 0)
     {
         delete frame;

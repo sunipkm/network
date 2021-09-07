@@ -188,17 +188,67 @@ ssize_t NetFrame::sendFrame(NetData *network_data, bool CloseOnFailure)
     this->frame_size = malloc_size;
 
     if (network_data->ssl_ready && network_data->cssl != NULL)
-        send_size = SSL_write(network_data->cssl, buffer, malloc_size);
+    {
+        int send_attempts = 20, err;
+        while(1)
+        {
+            send_attempts--;
+            send_size = SSL_write(network_data->cssl, buffer, malloc_size);
+            if (send_size > 0)
+                break;
+            err = SSL_get_error(network_data->cssl, send_size);
+            switch(err)
+            {
+                case SSL_ERROR_NONE:
+                    continue;
+                case SSL_ERROR_ZERO_RETURN:
+                {
+                    network_data->Close();
+                    return -404;
+                }
+                case SSL_ERROR_WANT_WRITE:
+                {
+                    int sock = SSL_get_wfd(network_data->cssl);
+                    fd_set fds;
+                    FD_ZERO(&fds);
+                    FD_SET(sock, &fds);
+
+                    struct timeval timeout;
+                    timeout.tv_sec = 5;
+                    timeout.tv_usec = 0;
+
+                    int sel = select(sock + 1, NULL, &fds, NULL, &timeout);
+                    if (sel > 0) // can write
+                        continue;
+                    else if (sel == 0)
+                    {
+
+                    }
+                    else
+                    {
+                        network_data->Close();
+                        return -404;
+                    }
+                }
+            }
+            if (send_attempts == 0 && CloseOnFailure)
+            {
+                network_data->Close();
+                return -404;
+            }
+        }
+    }
     else
+    {
         send_size = send(network_data->_socket, (char *)buffer, malloc_size, 0);
 
-    if (send_size < 0)
-    {
-        dbprintlf("Connection closed by server/client\n");
-        if (CloseOnFailure)
-            network_data->Close();
+        if (send_size < 0)
+        {
+            dbprintlf("Connection closed by server/client\n");
+            if (CloseOnFailure)
+                network_data->Close();
+        }
     }
-
     free(buffer);
 
     return send_size;
@@ -243,14 +293,12 @@ ssize_t NetFrame::recvFrame(NetData *network_data, bool CloseOnFailure)
                     case SSL_ERROR_NONE:
                     {
                         // no real error, just try again...
-                        dbprintf("SSL_ERROR_NONE %i\n", recv_attempts);
                         continue;
                     }   
 
                     case SSL_ERROR_ZERO_RETURN: 
                     {
                         // peer disconnected...
-                        dbprintf("SSL_ERROR_ZERO_RETURN %i\n", recv_attempts);
                         network_data->Close();
                         return -404;
                     }   
@@ -258,7 +306,6 @@ ssize_t NetFrame::recvFrame(NetData *network_data, bool CloseOnFailure)
                     case SSL_ERROR_WANT_READ: 
                     {
                         // no data available right now, wait a few seconds in case new data arrives...
-                        dbprintf("SSL_ERROR_WANT_READ %i\n", recv_attempts);
 
                         int sock = SSL_get_rfd(network_data->cssl);
                         FD_ZERO(&fds);
@@ -266,11 +313,7 @@ ssize_t NetFrame::recvFrame(NetData *network_data, bool CloseOnFailure)
                         
                         struct timeval timeout;
                         timeout.tv_sec = 5;
-#ifdef NETWORK_WINDOWS
                         timeout.tv_usec = 0;
-#else
-                        timeout.tv_nsec = 0;
-#endif
 
                         err = select(sock+1, &fds, NULL, NULL, &timeout);
                         if (err > 0)
@@ -280,8 +323,6 @@ ssize_t NetFrame::recvFrame(NetData *network_data, bool CloseOnFailure)
                             // timeout...
                         } else {
                             dbprintlf(RED_FG "Select timed out");
-                            network_data->Close();
-                            return -404;
                         }
 
                         break;
@@ -292,6 +333,11 @@ ssize_t NetFrame::recvFrame(NetData *network_data, bool CloseOnFailure)
                         break;
                     }
                 }
+            }
+            if (recv_attempts > 20 && CloseOnFailure)
+            {
+                network_data->Close();
+                return -404;
             }
         }
         else
@@ -343,14 +389,12 @@ ssize_t NetFrame::recvFrame(NetData *network_data, bool CloseOnFailure)
                     case SSL_ERROR_NONE:
                     {
                         // no real error, just try again...
-                        dbprintf("SSL_ERROR_NONE %i\n", recv_attempts);
                         continue;
                     }   
 
                     case SSL_ERROR_ZERO_RETURN: 
                     {
                         // peer disconnected...
-                        dbprintf("SSL_ERROR_ZERO_RETURN %i\n", recv_attempts);
                         network_data->Close();
                         return -404;
                     }   
@@ -358,7 +402,6 @@ ssize_t NetFrame::recvFrame(NetData *network_data, bool CloseOnFailure)
                     case SSL_ERROR_WANT_READ: 
                     {
                         // no data available right now, wait a few seconds in case new data arrives...
-                        dbprintf("SSL_ERROR_WANT_READ %i\n", recv_attempts);
 
                         int sock = SSL_get_rfd(network_data->cssl);
                         FD_ZERO(&fds);
@@ -366,11 +409,7 @@ ssize_t NetFrame::recvFrame(NetData *network_data, bool CloseOnFailure)
                         
                         struct timeval timeout;
                         timeout.tv_sec = 5;
-#ifdef NETWORK_WINDOWS
                         timeout.tv_usec = 0;
-#else
-                        timeout.tv_nsec = 0;
-#endif
 
                         err = select(sock+1, &fds, NULL, NULL, &timeout);
                         if (err > 0)
@@ -380,8 +419,6 @@ ssize_t NetFrame::recvFrame(NetData *network_data, bool CloseOnFailure)
                             // timeout...
                         } else {
                             dbprintlf(RED_FG "Select timed out");
-                            network_data->Close();
-                            return -404;
                         }
 
                         break;
@@ -392,6 +429,11 @@ ssize_t NetFrame::recvFrame(NetData *network_data, bool CloseOnFailure)
                         break;
                     }
                 }
+            }
+            if (recv_attempts > 20 && CloseOnFailure)
+            {
+                network_data->Close();
+                return -404;
             }
         }
         else
@@ -473,14 +515,12 @@ ssize_t NetFrame::recvFrame(NetData *network_data, bool CloseOnFailure)
                     case SSL_ERROR_NONE:
                     {
                         // no real error, just try again...
-                        dbprintf("SSL_ERROR_NONE %i\n", recv_attempts);
                         continue;
                     }   
 
                     case SSL_ERROR_ZERO_RETURN: 
                     {
                         // peer disconnected...
-                        dbprintf("SSL_ERROR_ZERO_RETURN %i\n", recv_attempts);
                         network_data->Close();
                         return -404;
                     }   
@@ -488,7 +528,6 @@ ssize_t NetFrame::recvFrame(NetData *network_data, bool CloseOnFailure)
                     case SSL_ERROR_WANT_READ: 
                     {
                         // no data available right now, wait a few seconds in case new data arrives...
-                        dbprintf("SSL_ERROR_WANT_READ %i\n", recv_attempts);
 
                         int sock = SSL_get_rfd(network_data->cssl);
                         FD_ZERO(&fds);
@@ -496,11 +535,7 @@ ssize_t NetFrame::recvFrame(NetData *network_data, bool CloseOnFailure)
                         
                         struct timeval timeout;
                         timeout.tv_sec = 5;
-#ifdef NETWORK_WINDOWS
                         timeout.tv_usec = 0;
-#else
-                        timeout.tv_nsec = 0;
-#endif
 
                         err = select(sock+1, &fds, NULL, NULL, &timeout);
                         if (err > 0)
@@ -510,8 +545,6 @@ ssize_t NetFrame::recvFrame(NetData *network_data, bool CloseOnFailure)
                             // timeout...
                         } else {
                             dbprintlf(RED_FG "Select timed out");
-                            network_data->Close();
-                            return -404;
                         }
 
                         break;
@@ -522,6 +555,11 @@ ssize_t NetFrame::recvFrame(NetData *network_data, bool CloseOnFailure)
                         break;
                     }
                 }
+            }
+            if (recv_attempts > 20 && CloseOnFailure)
+            {
+                network_data->Close();
+                return -404;
             }
         }
         else
@@ -570,14 +608,12 @@ ssize_t NetFrame::recvFrame(NetData *network_data, bool CloseOnFailure)
                     case SSL_ERROR_NONE:
                     {
                         // no real error, just try again...
-                        dbprintf("SSL_ERROR_NONE %i\n", recv_attempts);
                         continue;
                     }   
 
                     case SSL_ERROR_ZERO_RETURN: 
                     {
                         // peer disconnected...
-                        dbprintf("SSL_ERROR_ZERO_RETURN %i\n", recv_attempts);
                         network_data->Close();
                         return -404;
                     }   
@@ -585,7 +621,6 @@ ssize_t NetFrame::recvFrame(NetData *network_data, bool CloseOnFailure)
                     case SSL_ERROR_WANT_READ: 
                     {
                         // no data available right now, wait a few seconds in case new data arrives...
-                        dbprintf("SSL_ERROR_WANT_READ %i\n", recv_attempts);
 
                         int sock = SSL_get_rfd(network_data->cssl);
                         FD_ZERO(&fds);
@@ -593,11 +628,7 @@ ssize_t NetFrame::recvFrame(NetData *network_data, bool CloseOnFailure)
                         
                         struct timeval timeout;
                         timeout.tv_sec = 5;
-#ifdef NETWORK_WINDOWS
                         timeout.tv_usec = 0;
-#else
-                        timeout.tv_nsec = 0;
-#endif
 
                         err = select(sock+1, &fds, NULL, NULL, &timeout);
                         if (err > 0)
@@ -607,8 +638,6 @@ ssize_t NetFrame::recvFrame(NetData *network_data, bool CloseOnFailure)
                             // timeout...
                         } else {
                             dbprintlf(RED_FG "Select timed out");
-                            network_data->Close();
-                            return -404;
                         }
 
                         break;
@@ -619,6 +648,11 @@ ssize_t NetFrame::recvFrame(NetData *network_data, bool CloseOnFailure)
                         break;
                     }
                 }
+            }
+            if (recv_attempts > 20 && CloseOnFailure)
+            {
+                network_data->Close();
+                return -404;
             }
         }
         else

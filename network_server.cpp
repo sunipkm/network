@@ -341,7 +341,7 @@ int gs_accept(NetDataServer *serv, int client_id)
     // Step 4. Assign vertex or hang up
     NetVertex vertices[2];
     NetVertex _vertex = rand();
-    while (_vertex < 0xffff)
+    while (_vertex & 0x10000 == 0x0)
         _vertex = rand();
     _vertex = _vertex & 0xffff0000;
     vertices[0] = (_vertex);
@@ -353,7 +353,6 @@ int gs_accept(NetDataServer *serv, int client_id)
     delete frame;
 
     frame = new NetFrame((void *)vertices, sizeof(vertices), (int)NetType::SRV, NetType::SRV, FrameStatus::NONE, vertices[0]);
-
     bytes = frame->sendFrame(client);
     delete frame;
     if (bytes <= 0)
