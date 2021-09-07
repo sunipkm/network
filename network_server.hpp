@@ -40,11 +40,7 @@ class NetDataServer
 private:
     NetClient *clients = nullptr;
     int num_clients;
-#ifndef NETWORK_WINDOWS
-    int fd;
-#else
-    SOCKET fd;
-#endif
+    int fd = -1;
     bool listen_done = false;
 #ifndef NETWORK_WINDOWS
     pthread_t accept_thread;

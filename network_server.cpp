@@ -250,10 +250,10 @@ NetDataServer::~NetDataServer()
 #else
     DWORD stat = 0;
     TerminateThread(accept_thread, stat);
-    if (fd != INVALID_SOCKET)
+    if (fd >= 0)
     {
         closesocket(fd);
-        fd = INVALID_SOCKET;
+        fd = -1;
     }
 #endif
     if (clients != nullptr)

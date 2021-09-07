@@ -40,8 +40,8 @@
 
 static int ssl_lib_init = 0;
 
-#ifndef NETWORK_WINDOWS
 int gs_connect(int socket, const struct sockaddr *address, socklen_t socket_size, int tout_s)
+#ifndef NETWORK_WINDOWS
 {
     int res;
     long arg;
@@ -144,7 +144,6 @@ int gs_connect(int socket, const struct sockaddr *address, socklen_t socket_size
     return socket;
 }
 #else
-int gs_connect(SOCKET socket, const struct sockaddr *address, socklen_t socket_size, int tout_s)
 {
     int res = connect(socket, address, socket_size);
     if (res)
@@ -278,11 +277,7 @@ int NetDataClient::ConnectToServer()
     // This is already done when initializing network_data.
     // network_data->serv_ip->sin_port = htons(server_port);
     _socket = socket(AF_INET, SOCK_STREAM, 0);
-#ifdef NETWORK_WINDOWS
-    if (_socket == INVALID_SOCKET)
-#else
     if (_socket < 0)
-#endif
     {
         dbprintlf(RED_FG "Socket creation error.");
         connect_status = -1;

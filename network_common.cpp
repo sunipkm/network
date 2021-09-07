@@ -51,11 +51,10 @@ void NetData::Close()
     connection_ready = false;
 #ifndef NETWORK_WINDOWS
     close(_socket);
-    _socket = -1;
 #else
     closesocket(_socket);
-    _socket = INVALID_SOCKET;
 #endif
+    _socket = -1;
 }
 
 NetFrame::NetFrame(void *payload, ssize_t size, int payload_type, NetType type, FrameStatus status, NetVertex destination) : payload(nullptr)

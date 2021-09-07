@@ -125,11 +125,7 @@ typedef uint16_t NetPort;
 class NetData
 {
 public:
-#ifndef NETWORK_WINDOWS
     int _socket = -1;
-#else
-    SOCKET _socket = INVALID_SOCKET;
-#endif
     bool connection_ready = false;
     NetVertex origin;
     bool server = false;
@@ -314,5 +310,16 @@ static inline uint16_t internal_crc16(unsigned char *data_p, uint16_t length)
 
     return (crc);
 }
+
+#ifdef NETWORK_WINDOWS
+static inline int usleep(unsigned long t)
+{
+    int sleeptime = t / 1000;
+    if (sleeptime == 0)
+        sleeptime = 1;
+    Sleep(sleeptime);
+    return sleeptime;
+}
+#endif
 
 #endif // NETWORK_HPP
