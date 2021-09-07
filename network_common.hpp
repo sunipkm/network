@@ -14,21 +14,19 @@
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
 #define NETWORK_WINDOWS
+#define _CRT_RAND_S
 typedef int ssize_t;
 #define WIN32_LEAN_AND_MEAN
 
+#include <stdlib.h>
 #include <stdio.h>
+#include <limits.h>
 #include <windows.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
-#include <stdlib.h>
 
 #pragma comment (lib, "Ws2_32.lib")
-#pragma comment (lib, "Mswsock.lib")
-#pragma comment (lib, "AdvApi32.lib")
 #pragma comment (lib, "crypt32")
-#pragma comment (lib, "libcrypto_static.lib")
-#pragma comment (lib, "libssl_static.lib")
 
 #else
 #include <arpa/inet.h>

@@ -9,6 +9,7 @@
  * 
  */
 
+#include "network_common.hpp"
 #include <cstdio>
 #include <cstring>
 #include <stdexcept>
@@ -18,7 +19,6 @@
 #include <new>
 #include <time.h>
 #include <assert.h>
-#include "network_common.hpp"
 #ifndef NETWORK_WINDOWS
 #include <unistd.h>
 #include <sys/socket.h>
@@ -341,8 +341,14 @@ int gs_accept(NetDataServer *serv, int client_id)
     // Step 4. Assign vertex or hang up
     NetVertex vertices[2];
     NetVertex _vertex = rand();
-    while (_vertex & 0x10000 == 0x0)
+    while (_vertex < 0xffff)
+    {
+#ifdef NETWORK_WINDOWS
+        while(rand_s(&_vertex));
+#else
         _vertex = rand();
+#endif
+    }
     _vertex = _vertex & 0xffff0000;
     vertices[0] = (_vertex);
     vertices[0] |= frame->getOrigin() & 0x7fff;
