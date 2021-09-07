@@ -56,7 +56,7 @@
 
 #ifndef MEB_CODES
 #define MEB_CODES
-#define FATAL "\033[1m\x1b[107m\x1b[31m(FATAL) "
+#define FATAL "(FATAL) "
 #endif // MEB_CODES
 #endif
 

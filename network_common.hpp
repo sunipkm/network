@@ -312,13 +312,21 @@ static inline uint16_t internal_crc16(unsigned char *data_p, uint16_t length)
 }
 
 #ifdef NETWORK_WINDOWS
-static inline int usleep(unsigned long t)
+static inline unsigned long usleep(unsigned long t)
 {
-    int sleeptime = t / 1000;
-    if (sleeptime == 0)
-        sleeptime = 1;
+    if (t == 0)
+        return 0;
+    unsigned long sleeptime = t / 1000 + (t % 1000 > 0);
     Sleep(sleeptime);
-    return sleeptime;
+    return 0;
+}
+static inline unsigned int sleep(unsigned int t)
+{
+    if (t == 0)
+        return 0;
+    unsigned int sleeptime = t * 1000;
+    Sleep(sleeptime);
+    return 0;
 }
 #endif
 
