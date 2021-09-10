@@ -35,11 +35,7 @@ int main(int argc, char *argv[])
             }
             delete frame;
         }
-#ifndef NETWORK_WINDOWS
         sleep(1);
-#else
-        Sleep(1000);
-#endif
     }
     delete server;
     return 0;

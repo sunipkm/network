@@ -19,8 +19,6 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 #endif
-#include <openssl/ssl.h>
-#include <openssl/sha.h>
 #include <string.h>
 
 class NetDataClient : public NetData

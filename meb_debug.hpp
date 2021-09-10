@@ -12,7 +12,7 @@
 #ifndef MEB_DEBUG_HPP
 #define MEB_DEBUG_HPP
 
-#ifdef WIN32_LEAN_AND_MEAN
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
 #define TERMINATOR
 #ifndef MEB_COLORS
 #define MEB_COLORS
@@ -33,7 +33,7 @@
 
 #ifndef MEB_CODES
 #define MEB_CODES
-#define FATAL "\033[1m\x1b[107m\x1b[31m(FATAL) "
+#define FATAL "(FATAL) "
 #endif // MEB_CODES
 #else
 #define TERMINATOR "\x1b[0m"
@@ -56,7 +56,7 @@
 
 #ifndef MEB_CODES
 #define MEB_CODES
-#define FATAL "(FATAL) "
+#define FATAL "\033[1m\x1b[107m\x1b[31m(FATAL) "
 #endif // MEB_CODES
 #endif
 

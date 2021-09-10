@@ -9,6 +9,7 @@
  * 
  */
 
+#include "network_common.hpp"
 #include <cstdio>
 #include <cstring>
 #include <stdexcept>
@@ -17,7 +18,6 @@
 #include <fcntl.h>
 #include <new>
 
-#include "network_common.hpp"
 #ifndef NETWORK_WINDOWS
 #include <unistd.h>
 #include <sys/socket.h>
@@ -30,12 +30,6 @@
 #ifdef __linux__
 #include <signal.h>
 #endif
-
-#include <openssl/bio.h>
-#include <openssl/ssl.h>
-#include <openssl/err.h>
-#include <openssl/sha.h>
-
 #include "network_client.hpp"
 
 static int ssl_lib_init = 0;

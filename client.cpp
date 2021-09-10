@@ -30,12 +30,11 @@ int main(int argc, char *argv[])
     std::cout << "Connecting to server: " << conn->ConnectToServer() << std::endl;
     std::cout << "Server vertex: " << std::hex << conn->GetServerVertex() << std::endl;
     std::cout << "Client vertex: " << conn->GetVertex() << std::dec << std::endl;
-#ifndef NETWORK_WINDOWS
     sleep(1);
+#ifndef NETWORK_WINDOWS
     pthread_t poll_thread;
     if (pthread_create(&poll_thread, NULL, gs_polling_thread, conn) < 0)
 #else
-    Sleep(1000);
     HANDLE poll_thread;
     DWORD status = 0;
     poll_thread = CreateThread(0, 0, gs_polling_thread, conn, 0, &status);
@@ -46,11 +45,12 @@ int main(int argc, char *argv[])
         return -1;
     }
     while (!done)
-#ifndef NETWORK_WINDOWS
+    {
         sleep(1);
+    }
+#ifndef NETWORK_WINDOWS
     pthread_cancel(poll_thread);
 #else
-        Sleep(1000);
     TerminateThread(poll_thread, status);
 #endif
     delete conn;
