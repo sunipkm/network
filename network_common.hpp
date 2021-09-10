@@ -1,7 +1,7 @@
 /**
  * @file network_common.hpp
- * @author Mit Bailey (mitbailey99@gmail.com)
- * @brief 
+ * @author Mit Bailey (mitbailey99@gmail.com), Sunip K. Mukherjee (sunipkmukherjee@gmail.com)
+ * @brief Network Frames API
  * @version See Git tags for version information.
  * @date 2021.07.30
  * 
@@ -197,13 +197,15 @@ public:
         hdr->payload_size = -1;
     }
 
-    /** CONSTRUCTOR
-     * @brief THROWS EXCEPTIONS. Creates a NetFrame for sending via .sendFrame(...).
+    /**
+     * @brief Construct a new NetFrame object
      * 
-     * @param payload 
-     * @param size 
-     * @param type 
-     * @param dest 
+     * @param payload Pointer to data to send, can be NULL or nullptr if payload is of type POLL
+     * @param size Size of payload (must be 0 if payload is NULL or nullptr)
+     * @param payload_type Integer specifying type of payload (intended for endpoints)
+     * @param type Frame type
+     * @param status Frame status
+     * @param destination Frame destination
      */
     NetFrame(void *payload, ssize_t size, int payload_type, NetType type, FrameStatus status, NetVertex destination);
 
@@ -223,16 +225,19 @@ public:
     int retrievePayload(void *storage, ssize_t capacity);
 
     /**
-     * @brief Sends itself, frame must have been constructed using NetFrame(unsigned char *, ssize_t, NetType, NetVertex).
+     * @brief Send the network frame constructed using the NetFrame(unsigned char *, ssize_t, NetType, FrameStatus, NetVertex) constructor.
      * 
-     * @return ssize_t Zero on success, negative on failure. 
+     * @param network_data Pointer to NetData inherited class
+     * @param CloseOnFailure Close connection on failure
+     * @return ssize_t Size of bytes sent on success, negative on failure
      */
     ssize_t sendFrame(NetData *network_data, bool CloseOnFailure = true);
 
     /**
      * @brief Receives data into a NetFrame constructed by NetFrame().
      * 
-     * @param network_data Network Data struct 
+     * @param network_data Pointer to NetData inherited class
+     * @param CloseOnFailure Close connection on failure
      * @return ssize_t Number of bytes received on success, negative on failure.
      */
     ssize_t recvFrame(NetData *network_data, bool CloseOnFailure = true);
@@ -312,6 +317,12 @@ static inline uint16_t internal_crc16(unsigned char *data_p, uint16_t length)
 }
 
 #ifdef NETWORK_WINDOWS
+/**
+ * @brief Sleep for t microseconds (rounded off to milliseconds, always larger)
+ * 
+ * @param t Microseconds to sleep for
+ * @return 0
+ */
 static inline unsigned long usleep(unsigned long t)
 {
     if (t == 0)
@@ -320,6 +331,12 @@ static inline unsigned long usleep(unsigned long t)
     Sleep(sleeptime);
     return 0;
 }
+/**
+ * @brief Sleep for t seconds
+ * 
+ * @param t Seconds to sleep for
+ * @return 0
+ */
 static inline unsigned int sleep(unsigned int t)
 {
     if (t == 0)

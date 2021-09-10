@@ -1,9 +1,9 @@
 /**
  * @file network_client.cpp
- * @author Mit Bailey (mitbailey99@gmail.com)
- * @brief 
- * @version See Git tags for version information.
- * @date 2021.09.02
+ * @author Sunip K. Mukherjee (sunipkmukherjee@gmail.com)
+ * @brief Network Client Implementation
+ * @version 1.0
+ * @date 2021-09-10
  * 
  * @copyright Copyright (c) 2021
  * 

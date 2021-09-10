@@ -1,9 +1,9 @@
 /**
  * @file network_server.hpp
- * @author Mit Bailey (mitbailey99@gmail.com)
- * @brief 
- * @version See Git tags for version information.
- * @date 2021.09.02
+ * @author Sunip K. Mukherjee (sunipkmukherjee@gmail.com)
+ * @brief Network Server API header
+ * @version 0.1
+ * @date 2021-09-10
  * 
  * @copyright Copyright (c) 2021
  * 
@@ -57,8 +57,18 @@ private:
     void _NetDataServer(NetPort listening_port, int clients);
 
 public:
-    NetDataServer(NetPort listening_port, int clients);
+    /**
+     * @brief Construct a new NetDataServer
+     * 
+     * @param listening_port Port to listen on
+     * @param clients Maximum number of connections to be accepted
+     * @param auth_token Authentication token to authenticate clients against
+     */
     NetDataServer(NetPort listening_port, int clients, sha1_hash_t auth_token);
+    /**
+     * @brief Destroy the NetDataServer object and close all active connections
+     * 
+     */
     ~NetDataServer();
     /**
      * @brief Stop accepting new connections
@@ -70,9 +80,31 @@ public:
      * @return int 
      */
     int GetNumClients() { return num_clients; };
+    /**
+     * @brief Get the Client object for a given ID
+     * 
+     * @param id ID of the client [0 ... GetNumClients())
+     * @return NetClient* Pointer to client, nullptr if not found
+     */
     NetClient *GetClient(int id);
+    /**
+     * @brief Get the Client object for a given vertex
+     * 
+     * @param v NetVertex of the client
+     * @return NetClient* Pointer to client, nullptr if not found
+     */
     NetClient *GetClient(NetVertex v);
+    /**
+     * @brief Get the vertex for the server
+     * 
+     * @return const NetVertex 
+     */
     const NetVertex GetVertex() const { return origin; };
+    /**
+     * @brief Get the authentication token the server was created with
+     * 
+     * @return const sha1_hash_t* 
+     */
     const sha1_hash_t *GetAuthToken() const { return auth_token; };
 };
 

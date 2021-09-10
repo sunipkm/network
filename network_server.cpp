@@ -1,9 +1,9 @@
 /**
  * @file network_server.cpp
- * @author Mit Bailey (mitbailey99@gmail.com)
- * @brief 
- * @version See Git tags for version information.
- * @date 2021.09.02
+ * @author Sunip K. Mukherjee (sunipkmukherjee@gmail.com)
+ * @brief Network Server Implementation
+ * @version 0.1
+ * @date 2021-09-10
  * 
  * @copyright Copyright (c) 2021
  * 
@@ -115,11 +115,6 @@ DWORD WINAPI gs_accept_thread(LPVOID args)
 #endif
     }
     return NULL;
-}
-
-NetDataServer::NetDataServer(NetPort listening_port, int clients)
-{
-    _NetDataServer(listening_port, clients);
 }
 
 NetDataServer::NetDataServer(NetPort listening_port, int clients, sha1_hash_t auth_token)

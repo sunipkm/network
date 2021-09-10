@@ -1,3 +1,13 @@
+/**
+ * @file client.cpp
+ * @author Sunip K. Mukherjee (sunipkmukherjee@gmail.com)
+ * @brief Platform independent example client
+ * @version 0.1
+ * @date 2021-09-10
+ * 
+ * @copyright Copyright (c) 2021
+ * 
+ */
 #include <iostream>
 #include "network_client.hpp"
 #ifndef NETWORK_WINDOWS

@@ -1,3 +1,13 @@
+/**
+ * @file server.cpp
+ * @author Sunip K. Mukherjee (sunipkmukherjee@gmail.com)
+ * @brief Platform independent example server
+ * @version 1.0
+ * @date 2021-09-10
+ * 
+ * @copyright Copyright (c) 2021
+ * 
+ */
 #include <iostream>
 #include "network_server.hpp"
 #ifndef NETWORK_WINDOWS
