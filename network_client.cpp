@@ -10,6 +10,7 @@
  */
 
 #include "network_common.hpp"
+#include "network_private.hpp"
 #include <cstdio>
 #include <cstring>
 #include <stdexcept>
@@ -219,6 +220,7 @@ int NetDataClient::OpenSSLConn()
 
 NetDataClient::~NetDataClient()
 {
+    connection_ready = false;
     Close();
     if (ctx != NULL)
         SSL_CTX_free(ctx);
@@ -341,7 +343,7 @@ int NetDataClient::ConnectToServer()
         return -3;
     }
     // Step 3. Send Auth Token
-    frame = new NetFrame((uint8_t *)auth_token->getBytes(), SHA512_DIGEST_LENGTH, 0, NetType::AUTH, FrameStatus::ACK, server_v);
+    frame = new NetFrame((uint8_t *)auth_token->getBytes(), SHA512_DIGEST_LENGTH, SRV_AUTH_TOKEN, NetType::SRV, FrameStatus::ACK, server_v);
     usleep(20000);
     if (frame->sendFrame(this) <= 0)
     {
@@ -385,8 +387,9 @@ int NetDataClient::ConnectToServer()
         Close();
         return -7;
     }
-    recv_active = true;
+    connection_ready = true;
     GetCerts();
+
     return connect_status;
 }
 
@@ -406,7 +409,7 @@ DWORD WINAPI gs_polling_thread(LPVOID args)
     network_data->recv_active = true;
     while (network_data->recv_active)
     {
-        if (network_data->csocket_ready)
+        if (network_data->connection_ready)
         {
             NetFrame *polling_frame = new NetFrame(NULL, 0, 0, NetType::POLL, FrameStatus::NONE, network_data->server_vertex);
             polling_frame->sendFrame(network_data);

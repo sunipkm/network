@@ -25,8 +25,8 @@ typedef int ssize_t;
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
-#pragma comment (lib, "Ws2_32.lib")
-#pragma comment (lib, "crypt32")
+#pragma comment(lib, "Ws2_32.lib")
+#pragma comment(lib, "crypt32")
 
 #else
 #include <arpa/inet.h>
@@ -52,7 +52,6 @@ enum class NetType : int32_t
     POLL = 0x1a, // Poll connection
     DATA,        // data frame
     SRV,         // server connection acknowledgement frame
-    AUTH,        // Authentication token
     MAX          // Last element
 };
 
@@ -80,10 +79,10 @@ public:
     bool csocket_ready = false;
     NetVertex origin;
     bool server = false;
-    bool ssl_ready = false; // Indicates subsequent send/receives will follow SSL
-    bool connection_ready = false;
-    SSL *cssl = NULL;       // SSL connection
-    SSL_CTX *ctx = NULL;    // SSL context
+    bool ssl_ready = false;        // Indicates subsequent send/receives will follow SSL
+    bool connection_ready = false; // Indicates connection ready
+    SSL *cssl = NULL;              // SSL connection
+    SSL_CTX *ctx = NULL;           // SSL context
     ClientClass devclass;
     ClientID devId;
 
@@ -148,6 +147,12 @@ public:
     {
         hdr->payload_size = -1;
     }
+
+    /**
+     * @brief Construct a new Net Frame object as a copy of another NetFrame object
+     * 
+     */
+    NetFrame(NetFrame *);
 
     /**
      * @brief Construct a new NetFrame object

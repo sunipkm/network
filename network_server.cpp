@@ -10,6 +10,7 @@
  */
 
 #include "network_common.hpp"
+#include "network_private.hpp"
 #include <cstdio>
 #include <cstring>
 #include <stdexcept>
@@ -106,13 +107,43 @@ DWORD WINAPI gs_accept_thread(LPVOID args)
     {
         for (int i = 0; i < serv->num_clients; i++)
         {
-            gs_accept(serv, i);
+            if (serv->GetClient(i)->connection_ready)
+            {
+                NetFrame *frame = new NetFrame();
+                if (frame->recvFrame(serv->GetClient(i)) > 0)
+                {
+                    dbprintlf("Received from %d: 0x%x,  type 0x%x", i, frame->getOrigin(), frame->getType());
+                    // check frame type and process
+                    switch (frame->getType())
+                    {
+                        case NetType::POLL: // support polling for other clients?
+
+                            break;
+                        
+                        case NetType::SRV: // implement server commands here
+
+                            break;
+                        
+                        case NetType::DATA:
+                            dbprintlf("Callback work queue goes here");
+                            break;
+                        
+                        case NetType::MAX:
+                            dbprintlf(FATAL "Not allowed");
+                            break;
+                        
+                        default:
+                            dbprintf(FATAL "Attack?");
+                            break;
+                    }
+                    
+                }
+                delete frame;
+            }
+            else
+                gs_accept(serv, i);
         }
-#ifdef NETWORK_WINDOWS
-        Sleep(1000);
-#else
-        sleep(1);
-#endif
+        usleep(100000); // 0.1 seconds
     }
     return NULL;
 }
@@ -319,9 +350,9 @@ int gs_accept(NetDataServer *serv, int client_id)
         client->Close();
         return -102;
     }
-    if (frame->getType() != NetType::AUTH) // expecting packet of type auth token
+    if (frame->getType() != NetType::SRV || frame->getPayloadType() != SRV_AUTH_TOKEN) // expecting packet of type auth token
     {
-        dbprintlf("Expected type 0x%x, got type 0x%x", NetType::AUTH, frame->getType());
+        dbprintlf("Expected packet type 0x%x, got type 0x%x, payload type 0x%x", NetType::SRV, frame->getType(), frame->getPayloadType());
         client->Close();
         return -103;
     }
@@ -410,7 +441,8 @@ int gs_accept(NetDataServer *serv, int client_id)
         return -110;
     }
     // success!
-    return client->_socket;
+    client->connection_ready = true;
+    return 1;
 }
 
 int gs_accept_ssl(NetClient *client)

@@ -33,18 +33,18 @@ int main(int argc, char *argv[])
 #endif
     while (!done)
     {
-        for (int i = 0; i < server->GetNumClients(); i++)
-        {
-            NetFrame *frame = new NetFrame();
-            int rcv_val = 0;
-            if (server->GetClient(i)->ssl_ready)
-                rcv_val = frame->recvFrame(server->GetClient(i));
-            if (rcv_val > 0) // conn closed
-            {
-                std::cout << "Frame received " << rcv_val << " from client ID " << i << ", vertex " << std::hex << (int)frame->getOrigin() << std::dec << ", frame type " << (int)frame->getType() << std::endl;
-            }
-            delete frame;
-        }
+        // for (int i = 0; i < server->GetNumClients(); i++)
+        // {
+        //     NetFrame *frame = new NetFrame();
+        //     int rcv_val = 0;
+        //     if (server->GetClient(i)->ssl_ready)
+        //         rcv_val = frame->recvFrame(server->GetClient(i));
+        //     if (rcv_val > 0) // conn closed
+        //     {
+        //         std::cout << "Frame received " << rcv_val << " from client ID " << i << ", vertex " << std::hex << (int)frame->getOrigin() << std::dec << ", frame type " << (int)frame->getType() << std::endl;
+        //     }
+        //     delete frame;
+        // }
         sleep(1);
     }
     delete server;

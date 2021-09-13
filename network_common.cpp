@@ -43,6 +43,7 @@ void NetData::CloseSSLConn()
 
 void NetData::Close()
 {
+    connection_ready = false;
     CloseSSLConn();
     csocket_ready = false;
 #ifndef NETWORK_WINDOWS
@@ -117,6 +118,26 @@ NetFrame::~NetFrame()
     memset(hdr, 0x0, sizeof(NetFrameHeader));
     memset(ftr, 0x0, sizeof(NetFrameFooter));
     hdr->payload_size = -1;
+}
+
+NetFrame::NetFrame(NetFrame *src)
+{
+    if (src == nullptr || src == NULL)
+    {
+        dbprintlf(FATAL "Source pointer is null, error");
+        throw std::bad_alloc();
+    }
+    memcpy(hdr, src->hdr, sizeof(NetFrameHeader));
+    memcpy(ftr, src->ftr, sizeof(NetFrameFooter));
+    if (hdr->payload_size > 0)
+    {
+        payload = new uint8_t[hdr->payload_size];
+        memcpy(payload, src->payload, hdr->payload_size);
+    }
+    else
+    {
+        payload = nullptr;
+    }
 }
 
 int NetFrame::retrievePayload(void *storage, ssize_t capacity)
