@@ -44,7 +44,7 @@ void NetData::CloseSSLConn()
 void NetData::Close()
 {
     CloseSSLConn();
-    connection_ready = false;
+    csocket_ready = false;
 #ifndef NETWORK_WINDOWS
     close(_socket);
 #else
@@ -134,16 +134,9 @@ int NetFrame::retrievePayload(void *storage, ssize_t capacity)
 
 ssize_t NetFrame::sendFrame(NetData *network_data, bool CloseOnFailure)
 {
-    if (!(network_data->connection_ready))
+    if (!network_data->ssl_ready || network_data->cssl == NULL)
     {
-        dbprintlf(YELLOW_FG "Connection is not ready, send aborted.");
-        return -1;
-    }
-
-    if (network_data->_socket < 0)
-    {
-        dbprintlf(RED_FG "Invalid socket (%d).", network_data->_socket);
-        return -1;
+        dbprintlf(FATAL "Connection not ready, could not send");
     }
 
     if (!validate())
@@ -187,66 +180,51 @@ ssize_t NetFrame::sendFrame(NetData *network_data, bool CloseOnFailure)
     // Set frame_size to malloc_size, the bytes allocated for the sendable buffer, to track how many bytes should send.
     this->frame_size = malloc_size;
 
-    if (network_data->ssl_ready && network_data->cssl != NULL)
+    int send_attempts = 20, err;
+    while (1)
     {
-        int send_attempts = 20, err;
-        while(1)
+        send_attempts--;
+        send_size = SSL_write(network_data->cssl, buffer, malloc_size);
+        if (send_size > 0)
+            break;
+        err = SSL_get_error(network_data->cssl, send_size);
+        switch (err)
         {
-            send_attempts--;
-            send_size = SSL_write(network_data->cssl, buffer, malloc_size);
-            if (send_size > 0)
-                break;
-            err = SSL_get_error(network_data->cssl, send_size);
-            switch(err)
+        case SSL_ERROR_NONE:
+            continue;
+        case SSL_ERROR_ZERO_RETURN:
+        {
+            network_data->Close();
+            return -404;
+        }
+        case SSL_ERROR_WANT_WRITE:
+        {
+            int sock = SSL_get_wfd(network_data->cssl);
+            fd_set fds;
+            FD_ZERO(&fds);
+            FD_SET(sock, &fds);
+
+            struct timeval timeout;
+            timeout.tv_sec = 5;
+            timeout.tv_usec = 0;
+
+            int sel = select(sock + 1, NULL, &fds, NULL, &timeout);
+            if (sel > 0) // can write
+                continue;
+            else if (sel == 0)
             {
-                case SSL_ERROR_NONE:
-                    continue;
-                case SSL_ERROR_ZERO_RETURN:
-                {
-                    network_data->Close();
-                    return -404;
-                }
-                case SSL_ERROR_WANT_WRITE:
-                {
-                    int sock = SSL_get_wfd(network_data->cssl);
-                    fd_set fds;
-                    FD_ZERO(&fds);
-                    FD_SET(sock, &fds);
-
-                    struct timeval timeout;
-                    timeout.tv_sec = 5;
-                    timeout.tv_usec = 0;
-
-                    int sel = select(sock + 1, NULL, &fds, NULL, &timeout);
-                    if (sel > 0) // can write
-                        continue;
-                    else if (sel == 0)
-                    {
-
-                    }
-                    else
-                    {
-                        network_data->Close();
-                        return -404;
-                    }
-                }
             }
-            if (send_attempts == 0 && CloseOnFailure)
+            else
             {
                 network_data->Close();
                 return -404;
             }
         }
-    }
-    else
-    {
-        send_size = send(network_data->_socket, (char *)buffer, malloc_size, 0);
-
-        if (send_size < 0)
+        }
+        if (send_attempts == 0 && CloseOnFailure)
         {
-            dbprintlf("Connection closed by server/client\n");
-            if (CloseOnFailure)
-                network_data->Close();
+            network_data->Close();
+            return -404;
         }
     }
     free(buffer);
@@ -258,15 +236,9 @@ ssize_t NetFrame::recvFrame(NetData *network_data, bool CloseOnFailure)
 {
     ssize_t retval = -1;
 
-    if (!(network_data->connection_ready))
+    if (!(network_data->ssl_ready) || network_data->cssl == NULL)
     {
-        dbprintlf(YELLOW_FG "Connection is not ready, recv aborted: %d, %p", network_data->connection_ready, network_data);
-        return -1;
-    }
-
-    if (network_data->_socket < 0)
-    {
-        dbprintlf(RED_FG "Invalid socket (%d).", network_data->_socket);
+        dbprintlf(YELLOW_FG "Connection is not ready, recv aborted: %d, %p", network_data->csocket_ready, network_data);
         return -1;
     }
 
@@ -280,84 +252,65 @@ ssize_t NetFrame::recvFrame(NetData *network_data, bool CloseOnFailure)
     {
         int sz;
         uint8_t *ptr = header.bytes + offset;
-        if (network_data->ssl_ready && network_data->cssl != NULL)
+        sz = SSL_read(network_data->cssl, ptr, 1);
+        if (sz <= 0)
         {
-            sz = SSL_read(network_data->cssl, ptr, 1);
-            if (sz <= 0)
+            int err = SSL_get_error(network_data->cssl, sz); // retrieve the error
+            recv_attempts++;
+            fd_set fds;
+            switch (err)
             {
-                int err = SSL_get_error(network_data->cssl, sz); // retrieve the error
-                recv_attempts++;
-                fd_set fds;
-                switch(err)
-                {
-                    case SSL_ERROR_NONE:
-                    {
-                        // no real error, just try again...
-                        continue;
-                    }   
-
-                    case SSL_ERROR_ZERO_RETURN: 
-                    {
-                        // peer disconnected...
-                        network_data->Close();
-                        return -404;
-                    }   
-
-                    case SSL_ERROR_WANT_READ: 
-                    {
-                        // no data available right now, wait a few seconds in case new data arrives...
-
-                        int sock = SSL_get_rfd(network_data->cssl);
-                        FD_ZERO(&fds);
-                        FD_SET(sock, &fds);
-                        
-                        struct timeval timeout;
-                        timeout.tv_sec = 5;
-                        timeout.tv_usec = 0;
-
-                        err = select(sock+1, &fds, NULL, NULL, &timeout);
-                        if (err > 0)
-                            continue; // more data to read...
-
-                        if (err == 0) {
-                            // timeout...
-                        } else {
-                            dbprintlf(RED_FG "Select timed out");
-                        }
-
-                        break;
-                    }
-
-                    default:
-                    {
-                        break;
-                    }
-                }
+            case SSL_ERROR_NONE:
+            {
+                // no real error, just try again...
+                continue;
             }
-            if (recv_attempts > 20 && CloseOnFailure)
+
+            case SSL_ERROR_ZERO_RETURN:
             {
+                // peer disconnected...
                 network_data->Close();
                 return -404;
             }
-        }
-        else
-        {
-            sz = recv(network_data->_socket, (char *)ptr, 1, MSG_WAITALL);
-            if (sz < 0)
+
+            case SSL_ERROR_WANT_READ:
             {
-                // Connection broken.
+                // no data available right now, wait a few seconds in case new data arrives...
+
+                int sock = SSL_get_rfd(network_data->cssl);
+                FD_ZERO(&fds);
+                FD_SET(sock, &fds);
+
+                struct timeval timeout;
+                timeout.tv_sec = 5;
+                timeout.tv_usec = 0;
+
+                err = select(sock + 1, &fds, NULL, NULL, &timeout);
+                if (err > 0)
+                    continue; // more data to read...
+
+                if (err == 0)
+                {
+                    // timeout...
+                }
+                else
+                {
+                    dbprintlf(RED_FG "Select timed out");
+                }
+
                 break;
             }
-            if (sz == 0)
+
+            default:
             {
-                recv_attempts++;
-                if (recv_attempts > 20)
-                {
-                    if (CloseOnFailure)
-                        network_data->Close();
-                    return -404;
-                }
+                break;
             }
+            }
+        }
+        if (recv_attempts > 20 && CloseOnFailure)
+        {
+            network_data->Close();
+            return -404;
         }
         if ((sz == 1) && (header.bytes[offset] == (uint8_t)(NETFRAME_GUID >> (offset * 8))))
         {
@@ -376,84 +329,65 @@ ssize_t NetFrame::recvFrame(NetData *network_data, bool CloseOnFailure)
     {
         int sz;
         uint8_t *ptr = header.bytes + offset;
-        if (network_data->ssl_ready && network_data->cssl != NULL)
+        sz = SSL_read(network_data->cssl, ptr, 1);
+        if (sz <= 0)
         {
-            sz = SSL_read(network_data->cssl, ptr, 1);
-            if (sz <= 0)
+            int err = SSL_get_error(network_data->cssl, sz); // retrieve the error
+            recv_attempts++;
+            fd_set fds;
+            switch (err)
             {
-                int err = SSL_get_error(network_data->cssl, sz); // retrieve the error
-                recv_attempts++;
-                fd_set fds;
-                switch(err)
-                {
-                    case SSL_ERROR_NONE:
-                    {
-                        // no real error, just try again...
-                        continue;
-                    }   
-
-                    case SSL_ERROR_ZERO_RETURN: 
-                    {
-                        // peer disconnected...
-                        network_data->Close();
-                        return -404;
-                    }   
-
-                    case SSL_ERROR_WANT_READ: 
-                    {
-                        // no data available right now, wait a few seconds in case new data arrives...
-
-                        int sock = SSL_get_rfd(network_data->cssl);
-                        FD_ZERO(&fds);
-                        FD_SET(sock, &fds);
-                        
-                        struct timeval timeout;
-                        timeout.tv_sec = 5;
-                        timeout.tv_usec = 0;
-
-                        err = select(sock+1, &fds, NULL, NULL, &timeout);
-                        if (err > 0)
-                            continue; // more data to read...
-
-                        if (err == 0) {
-                            // timeout...
-                        } else {
-                            dbprintlf(RED_FG "Select timed out");
-                        }
-
-                        break;
-                    }
-
-                    default:
-                    {
-                        break;
-                    }
-                }
+            case SSL_ERROR_NONE:
+            {
+                // no real error, just try again...
+                continue;
             }
-            if (recv_attempts > 20 && CloseOnFailure)
+
+            case SSL_ERROR_ZERO_RETURN:
             {
+                // peer disconnected...
                 network_data->Close();
                 return -404;
             }
-        }
-        else
-        {
-            sz = recv(network_data->_socket, (char *)ptr, 1, MSG_WAITALL);
-            if (sz < 0)
+
+            case SSL_ERROR_WANT_READ:
             {
-                // Connection broken.
+                // no data available right now, wait a few seconds in case new data arrives...
+
+                int sock = SSL_get_rfd(network_data->cssl);
+                FD_ZERO(&fds);
+                FD_SET(sock, &fds);
+
+                struct timeval timeout;
+                timeout.tv_sec = 5;
+                timeout.tv_usec = 0;
+
+                err = select(sock + 1, &fds, NULL, NULL, &timeout);
+                if (err > 0)
+                    continue; // more data to read...
+
+                if (err == 0)
+                {
+                    // timeout...
+                }
+                else
+                {
+                    dbprintlf(RED_FG "Select timed out");
+                }
+
                 break;
             }
-            if (sz == 0)
+
+            default:
             {
-                recv_attempts++;
-                if (recv_attempts > 20)
-                {
-                    if (CloseOnFailure)
-                        network_data->Close();
-                    return -404;
-                }
+                break;
             }
+            }
+        }
+        if (recv_attempts > 20 && CloseOnFailure)
+        {
+            network_data->Close();
+            return -404;
         }
         offset += sz;
     } while (offset < sizeof(NetFrameHeader));
@@ -502,84 +436,65 @@ ssize_t NetFrame::recvFrame(NetData *network_data, bool CloseOnFailure)
     {
         int sz;
         uint8_t *ptr = this->payload + offset;
-        if (network_data->ssl_ready && network_data->cssl != NULL)
+        sz = SSL_read(network_data->cssl, ptr, 1);
+        if (sz <= 0)
         {
-            sz = SSL_read(network_data->cssl, ptr, 1);
-            if (sz <= 0)
+            int err = SSL_get_error(network_data->cssl, sz); // retrieve the error
+            recv_attempts++;
+            fd_set fds;
+            switch (err)
             {
-                int err = SSL_get_error(network_data->cssl, sz); // retrieve the error
-                recv_attempts++;
-                fd_set fds;
-                switch(err)
-                {
-                    case SSL_ERROR_NONE:
-                    {
-                        // no real error, just try again...
-                        continue;
-                    }   
-
-                    case SSL_ERROR_ZERO_RETURN: 
-                    {
-                        // peer disconnected...
-                        network_data->Close();
-                        return -404;
-                    }   
-
-                    case SSL_ERROR_WANT_READ: 
-                    {
-                        // no data available right now, wait a few seconds in case new data arrives...
-
-                        int sock = SSL_get_rfd(network_data->cssl);
-                        FD_ZERO(&fds);
-                        FD_SET(sock, &fds);
-                        
-                        struct timeval timeout;
-                        timeout.tv_sec = 5;
-                        timeout.tv_usec = 0;
-
-                        err = select(sock+1, &fds, NULL, NULL, &timeout);
-                        if (err > 0)
-                            continue; // more data to read...
-
-                        if (err == 0) {
-                            // timeout...
-                        } else {
-                            dbprintlf(RED_FG "Select timed out");
-                        }
-
-                        break;
-                    }
-
-                    default:
-                    {
-                        break;
-                    }
-                }
+            case SSL_ERROR_NONE:
+            {
+                // no real error, just try again...
+                continue;
             }
-            if (recv_attempts > 20 && CloseOnFailure)
+
+            case SSL_ERROR_ZERO_RETURN:
             {
+                // peer disconnected...
                 network_data->Close();
                 return -404;
             }
-        }
-        else
-        {
-            sz = recv(network_data->_socket, (char *)ptr, 1, MSG_WAITALL);
-            if (sz < 0)
+
+            case SSL_ERROR_WANT_READ:
             {
-                // Connection broken.
+                // no data available right now, wait a few seconds in case new data arrives...
+
+                int sock = SSL_get_rfd(network_data->cssl);
+                FD_ZERO(&fds);
+                FD_SET(sock, &fds);
+
+                struct timeval timeout;
+                timeout.tv_sec = 5;
+                timeout.tv_usec = 0;
+
+                err = select(sock + 1, &fds, NULL, NULL, &timeout);
+                if (err > 0)
+                    continue; // more data to read...
+
+                if (err == 0)
+                {
+                    // timeout...
+                }
+                else
+                {
+                    dbprintlf(RED_FG "Select timed out");
+                }
+
                 break;
             }
-            if (sz == 0)
+
+            default:
             {
-                recv_attempts++;
-                if (recv_attempts > 20)
-                {
-                    if (CloseOnFailure)
-                        network_data->Close();
-                    return -404;
-                }
+                break;
             }
+            }
+        }
+        if (recv_attempts > 20 && CloseOnFailure)
+        {
+            network_data->Close();
+            return -404;
         }
         offset += sz;
     } while (offset < payload_buffer_size);
@@ -595,84 +510,65 @@ ssize_t NetFrame::recvFrame(NetData *network_data, bool CloseOnFailure)
     {
         int sz;
         uint8_t *ptr = footer.bytes + offset;
-        if (network_data->ssl_ready && network_data->cssl != NULL)
+        sz = SSL_read(network_data->cssl, ptr, 1);
+        if (sz <= 0)
         {
-            sz = SSL_read(network_data->cssl, ptr, 1);
-            if (sz <= 0)
+            int err = SSL_get_error(network_data->cssl, sz); // retrieve the error
+            recv_attempts++;
+            fd_set fds;
+            switch (err)
             {
-                int err = SSL_get_error(network_data->cssl, sz); // retrieve the error
-                recv_attempts++;
-                fd_set fds;
-                switch(err)
-                {
-                    case SSL_ERROR_NONE:
-                    {
-                        // no real error, just try again...
-                        continue;
-                    }   
-
-                    case SSL_ERROR_ZERO_RETURN: 
-                    {
-                        // peer disconnected...
-                        network_data->Close();
-                        return -404;
-                    }   
-
-                    case SSL_ERROR_WANT_READ: 
-                    {
-                        // no data available right now, wait a few seconds in case new data arrives...
-
-                        int sock = SSL_get_rfd(network_data->cssl);
-                        FD_ZERO(&fds);
-                        FD_SET(sock, &fds);
-                        
-                        struct timeval timeout;
-                        timeout.tv_sec = 5;
-                        timeout.tv_usec = 0;
-
-                        err = select(sock+1, &fds, NULL, NULL, &timeout);
-                        if (err > 0)
-                            continue; // more data to read...
-
-                        if (err == 0) {
-                            // timeout...
-                        } else {
-                            dbprintlf(RED_FG "Select timed out");
-                        }
-
-                        break;
-                    }
-
-                    default:
-                    {
-                        break;
-                    }
-                }
+            case SSL_ERROR_NONE:
+            {
+                // no real error, just try again...
+                continue;
             }
-            if (recv_attempts > 20 && CloseOnFailure)
+
+            case SSL_ERROR_ZERO_RETURN:
             {
+                // peer disconnected...
                 network_data->Close();
                 return -404;
             }
-        }
-        else
-        {
-            sz = recv(network_data->_socket, (char *)ptr, 1, MSG_WAITALL);
-            if (sz < 0)
+
+            case SSL_ERROR_WANT_READ:
             {
-                // Connection broken.
+                // no data available right now, wait a few seconds in case new data arrives...
+
+                int sock = SSL_get_rfd(network_data->cssl);
+                FD_ZERO(&fds);
+                FD_SET(sock, &fds);
+
+                struct timeval timeout;
+                timeout.tv_sec = 5;
+                timeout.tv_usec = 0;
+
+                err = select(sock + 1, &fds, NULL, NULL, &timeout);
+                if (err > 0)
+                    continue; // more data to read...
+
+                if (err == 0)
+                {
+                    // timeout...
+                }
+                else
+                {
+                    dbprintlf(RED_FG "Select timed out");
+                }
+
                 break;
             }
-            if (sz == 0)
+
+            default:
             {
-                recv_attempts++;
-                if (recv_attempts > 20)
-                {
-                    if (CloseOnFailure)
-                        network_data->Close();
-                    return -404;
-                }
+                break;
             }
+            }
+        }
+        if (recv_attempts > 20 && CloseOnFailure)
+        {
+            network_data->Close();
+            return -404;
         }
         offset += sz;
     } while (offset < sizeof(NetFrameFooter));

@@ -267,7 +267,7 @@ int gs_accept(NetDataServer *serv, int client_id)
         return -1;
     }
     NetClient *client = &(serv->clients[client_id]);
-    if (client->connection_ready)
+    if (client->csocket_ready)
     {
         return client->_socket;
     }
@@ -279,7 +279,7 @@ int gs_accept(NetDataServer *serv, int client_id)
     if (client->_socket <= 0) // connection attempt unsuccessful
         return client->_socket;
 
-    client->connection_ready = true;
+    client->csocket_ready = true;
     int set = 1;
 #ifndef __linux__
 #ifndef NETWORK_WINDOWS

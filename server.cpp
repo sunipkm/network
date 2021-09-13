@@ -37,7 +37,7 @@ int main(int argc, char *argv[])
         {
             NetFrame *frame = new NetFrame();
             int rcv_val = 0;
-            if (server->GetClient(i)->connection_ready)
+            if (server->GetClient(i)->ssl_ready)
                 rcv_val = frame->recvFrame(server->GetClient(i));
             if (rcv_val > 0) // conn closed
             {

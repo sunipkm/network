@@ -196,7 +196,7 @@ void DestroySSL()
 
 int NetDataClient::OpenSSLConn()
 {
-    if (ctx != NULL && connection_ready)
+    if (ctx != NULL && csocket_ready)
     {
         cssl = SSL_new(ctx);
         if (!SSL_set_fd(cssl, _socket))
@@ -292,7 +292,7 @@ int NetDataClient::ConnectToServer()
     else
     {
         connect_status = 1;
-        connection_ready = true;
+        csocket_ready = true;
         dbprintlf(GREEN_FG "Set connection ready");
     }
     if (connect_status < 0)
@@ -406,7 +406,7 @@ DWORD WINAPI gs_polling_thread(LPVOID args)
     network_data->recv_active = true;
     while (network_data->recv_active)
     {
-        if (network_data->connection_ready)
+        if (network_data->csocket_ready)
         {
             NetFrame *polling_frame = new NetFrame(NULL, 0, 0, NetType::POLL, FrameStatus::NONE, network_data->server_vertex);
             polling_frame->sendFrame(network_data);

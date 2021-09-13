@@ -77,10 +77,11 @@ class NetData
 {
 public:
     int _socket = -1;
-    bool connection_ready = false;
+    bool csocket_ready = false;
     NetVertex origin;
     bool server = false;
     bool ssl_ready = false; // Indicates subsequent send/receives will follow SSL
+    bool connection_ready = false;
     SSL *cssl = NULL;       // SSL connection
     SSL_CTX *ctx = NULL;    // SSL context
     ClientClass devclass;
