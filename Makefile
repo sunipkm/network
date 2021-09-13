@@ -4,7 +4,8 @@ EDCFLAGS = -I ./ -Wall -std=c11 -Wno-deprecated-declarations $(CFLAGS)
 EDCXXFLAGS = -I./ -Wall -std=c++11 -Wno-deprecated-declarations $(CXXFLAGS)
 EDLDFLAGS = -lpthread -lm -lssl -lcrypto $(LDFLAGS)
 
-CXXOBJS = network_common.o
+CXXOBJS = network_common.o \
+			sha_hash.o
 		
 
 all: server client

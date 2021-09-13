@@ -244,14 +244,14 @@ NetDataClient::NetDataClient(const char *ip_addr, NetPort server_port, sha1_hash
         dbprintlf(FATAL "Authentication token not provided, exiting");
         throw std::invalid_argument("Auth is NULL");
     }
-    if (auth->hash() == 0x0)
+    if (auth->validate() == false)
     {
         dbprintlf(FATAL "Authentication hash invalid!");
         throw std::invalid_argument("Auth is uninitialized");
     }
     if (auth_token == nullptr)
         auth_token = new sha1_hash_t();
-    auth_token->copy(auth->bytes);
+    auth_token->copy(*auth);
     this->polling_rate = polling_rate;
     strcpy(disconnect_reason, "N/A");
     memset(server_ip, 0x0, sizeof(struct sockaddr_in));
@@ -338,7 +338,7 @@ int NetDataClient::ConnectToServer()
         return -3;
     }
     // Step 3. Send Auth Token
-    frame = new NetFrame(auth_token->bytes, SHA512_DIGEST_LENGTH, 0, NetType::AUTH, FrameStatus::ACK, server_v);
+    frame = new NetFrame((uint8_t *)auth_token->getBytes(), SHA512_DIGEST_LENGTH, 0, NetType::AUTH, FrameStatus::ACK, server_v);
     usleep(20000);
     if (frame->sendFrame(this) <= 0)
     {

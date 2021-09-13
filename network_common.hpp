@@ -35,9 +35,10 @@ typedef int ssize_t;
 #include <stdint.h>
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
-#include <openssl/sha.h>
 #include <openssl/err.h>
 #include <string.h>
+
+#include "sha_hash.hpp"
 
 #define SERVER_POLL_RATE 5
 #define RECV_TIMEOUT 15
@@ -61,56 +62,6 @@ enum class FrameStatus : int32_t
     ACK,      // Ack frame
     NACK,     // Nack frame
     MAX
-};
-
-class sha1_hash_t
-{
-private:
-    void clear()
-    {
-        memset(bytes, 0, sizeof(bytes));
-    }
-
-public:
-    uint8_t bytes[SHA512_DIGEST_LENGTH];
-
-    sha1_hash_t()
-    {
-        clear();
-    }
-    sha1_hash_t(const char *pass, size_t len)
-    {
-        if (pass != NULL && pass != nullptr)
-        {
-            SHA512_CTX ctx;
-            SHA512_Init(&ctx);
-            SHA512_Update(&ctx, pass, len);
-            SHA512_Final(bytes, &ctx);
-        }
-    }
-    void copy(uint8_t *src)
-    {
-        if ((src != NULL) && (src != nullptr))
-            memcpy(bytes, src, sizeof(bytes));
-    }
-    int hash() const
-    {
-        int result = 0;
-        for (int i = 0; i < sizeof(bytes); i++)
-            result |= bytes[i];
-        return result;
-    }
-    bool equal(sha1_hash_t hash) const
-    {
-        bool match = true;
-        for (int i = 0; i < sizeof(bytes); i++)
-        {
-            match = bytes[i] == hash.bytes[i];
-            if (!match)
-                break;
-        }
-        return match;
-    }
 };
 
 typedef uint32_t NetVertex;

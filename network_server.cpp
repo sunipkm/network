@@ -122,7 +122,7 @@ NetDataServer::NetDataServer(NetPort listening_port, int clients, sha1_hash_t au
     this->auth_token = new sha1_hash_t();
     InitializeSSLLibrary();
     _NetDataServer(listening_port, clients);
-    this->auth_token->copy(auth_token.bytes);
+    this->auth_token->copy(auth_token);
 }
 
 void NetDataServer::_NetDataServer(NetPort listening_port, int clients)
@@ -326,8 +326,8 @@ int gs_accept(NetDataServer *serv, int client_id)
         return -103;
     }
     sha1_hash_t auth_token;
-    frame->retrievePayload(auth_token.bytes, SHA512_DIGEST_LENGTH);
-    if (!(serv->auth_token->equal(auth_token)))
+    frame->retrievePayload((void *)auth_token.getBytes(), SHA512_DIGEST_LENGTH);
+    if (!(*(serv->auth_token)==auth_token))
     {
         dbprintlf("Authentication token mismatch");
         client->Close();
