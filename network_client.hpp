@@ -20,6 +20,37 @@
 #include <pthread.h>
 #endif
 #include <string.h>
+#include <string>
+
+class certinfo_t
+{
+public:
+    std::string *country = nullptr;
+    std::string *state = nullptr;
+    std::string *loc = nullptr;
+    std::string *org = nullptr;
+    std::string *org_unit = nullptr;
+    std::string *issuer = nullptr;
+    std::string *issuer_email = nullptr;
+
+    ~certinfo_t()
+    {
+        if (country != nullptr)
+            delete country;
+        if (state != nullptr)
+            delete state;
+        if (loc != nullptr)
+            delete loc;
+        if (org != nullptr)
+            delete org;
+        if (org_unit != nullptr)
+            delete org_unit;
+        if (issuer != nullptr)
+            delete issuer;
+        if (issuer_email != nullptr)
+            delete issuer_email;
+    }
+};
 
 class NetDataClient : public NetData
 {
@@ -31,10 +62,16 @@ private:
     int polling_rate = 5000; // POLL frame sent to the server every this-many milliseconds.
     sha1_hash_t *auth_token = nullptr;
     bool recv_active = false;
+    certinfo_t *certinfo = nullptr;
 
     int OpenSSLConn();
     void CloseSSLConn() {NetData *d = (NetData *) this; d->CloseSSLConn();};
     void Close() {NetData *d = (NetData *) this; d->Close();};
+    /**
+     * @brief Retrieve certificate info
+     * 
+     */
+    void GetCerts();
 
 public:
     /**
@@ -107,6 +144,18 @@ public:
      * @return int Positive on success, negative on error
      */
     int ConnectToServer();
+    /**
+     * @brief Print certificate info
+     * 
+     */
+    void PrintCerts();
+    const std::string *getCertCountry() const {return certinfo->country;};
+    const std::string *getCertState() const {return certinfo->state;};
+    const std::string *getCertLoc() const {return certinfo->loc;};
+    const std::string *getCertOrg() const {return certinfo->org;};
+    const std::string *getCertOrgUnit() const {return certinfo->org_unit;};
+    const std::string *getCertIssuer() const {return certinfo->issuer;};
+    const std::string *getCertIssuerEmail() const {return certinfo->issuer_email;};
 #ifndef NETWORK_WINDOWS
     friend void *gs_polling_thread(void *);
 #else

@@ -227,6 +227,9 @@ NetDataClient::~NetDataClient()
     if (auth_token != nullptr)
         delete auth_token;
     auth_token = nullptr;
+    if (certinfo != nullptr)
+        delete certinfo;
+    certinfo = nullptr;
 }
 
 NetDataClient::NetDataClient(const char *ip_addr, NetPort server_port, sha1_hash_t *auth, int polling_rate, ClientClass dclass, ClientID did)
@@ -383,6 +386,7 @@ int NetDataClient::ConnectToServer()
         return -7;
     }
     recv_active = true;
+    GetCerts();
     return connect_status;
 }
 
@@ -424,8 +428,76 @@ DWORD WINAPI gs_polling_thread(LPVOID args)
     }
     dbprintlf(FATAL "GS_POLLING_THREAD IS EXITING!");
 #ifndef NETWORK_WINDOWS
-        return nullptr;
+    return nullptr;
 #else
-        return 0;
+    return 0;
 #endif
+}
+
+std::string *extractStringFromX509Info(const char *info, const char *key)
+{
+    std::string *str = nullptr;
+    char *begin = NULL, *end = NULL;
+    int keybloblen = strlen(key) + strlen("/=");
+    char *keyblob = new char[keybloblen + 1];
+    sprintf(keyblob, "/%s=", key);
+    if ((begin = (char *)strstr(info, keyblob)) != NULL)
+    {
+        end = strstr(begin + 1, "/"); // next key
+        int len = end - begin - keybloblen;
+        if (len > 0 && end != NULL)
+        {
+            str = new std::string(begin + keybloblen, len);
+        }
+        else
+        {
+            str = new std::string(begin + keybloblen);
+        }
+    }
+    delete[] keyblob;
+    return str;
+}
+
+void NetDataClient::GetCerts()
+{
+    if (cssl == NULL || !ssl_ready)
+        return;
+    X509 *cert = NULL;
+    char *line = NULL;
+    cert = SSL_get_peer_certificate(cssl); /* get the server's certificate */
+    if (cert != NULL)
+    {
+        line = X509_NAME_oneline(X509_get_subject_name(cert), 0, 0);
+        certinfo = new certinfo_t;
+        certinfo->country = extractStringFromX509Info(line, "C");
+        certinfo->state = extractStringFromX509Info(line, "ST");
+        certinfo->loc = extractStringFromX509Info(line, "L");
+        certinfo->org = extractStringFromX509Info(line, "O");
+        certinfo->org_unit = extractStringFromX509Info(line, "OU");
+        certinfo->issuer = extractStringFromX509Info(line, "CN");
+        certinfo->issuer_email = extractStringFromX509Info(line, "emailAddress");
+        free(line); /* free the malloc'ed string */
+        line = X509_NAME_oneline(X509_get_issuer_name(cert), 0, 0);
+        free(line);      /* free the malloc'ed string */
+        X509_free(cert); /* free the malloc'ed certificate copy */
+    }
+    else
+        dbprintlf(FATAL "Info: No client certificates configured.");
+}
+
+void NetDataClient::PrintCerts()
+{
+    if (certinfo != nullptr)
+    {
+        if (certinfo->country != nullptr)
+            dbprintlf(GREEN_FG "Country: %s", certinfo->country->c_str());
+        if (certinfo->state != nullptr)
+            dbprintlf(GREEN_FG "State: %s", certinfo->state->c_str());
+        if (certinfo->loc != nullptr)
+            dbprintlf(GREEN_FG "Location: %s", certinfo->loc->c_str());
+        if (certinfo->org != nullptr && certinfo->org_unit != nullptr)
+            dbprintlf(GREEN_FG "Organization: %s, Unit: %s", certinfo->org->c_str(), certinfo->org_unit->c_str());
+        if (certinfo->issuer != nullptr && certinfo->issuer_email != nullptr)
+            dbprintlf(GREEN_FG "Issuer: %s (%s)", certinfo->issuer->c_str(), certinfo->issuer_email->c_str());
+    }
 }

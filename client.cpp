@@ -40,6 +40,7 @@ int main(int argc, char *argv[])
     std::cout << "Connecting to server: " << conn->ConnectToServer() << std::endl;
     std::cout << "Server vertex: " << std::hex << conn->GetServerVertex() << std::endl;
     std::cout << "Client vertex: " << conn->GetVertex() << std::dec << std::endl;
+    conn->PrintCerts();
     sleep(1);
 #ifndef NETWORK_WINDOWS
     pthread_t poll_thread;
