@@ -308,9 +308,9 @@ int NetDataClient::ConnectToServer()
     timeout.tv_sec = RECV_TIMEOUT;
     timeout.tv_usec = 0;
     setsockopt(_socket, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof timeout); // connection timeout set
-    int set = 1;
 #if !defined(__linux__)
 #if !defined(NETWORK_WINDOWS)
+    int set = 1;
     setsockopt(_socket, SOL_SOCKET, SO_NOSIGPIPE, &set, sizeof(set));
 #endif
 #endif
@@ -361,14 +361,14 @@ int NetDataClient::ConnectToServer()
     }
     if (frame->getType() != NetType::SRV)
     {
-        dbprintlf("Expecting %d, got %d for frame type", NetType::SRV, frame->getType());
+        dbprintlf("Expecting %d, got %d for frame type", (int) NetType::SRV, (int) frame->getType());
         Close();
         delete frame;
         return -5;
     }
     else if (frame->getPayloadSize() != 2 * sizeof(NetVertex))
     {
-        dbprintlf("Expecting package size %lu, got %u (2x NetVertex)", 2 * sizeof(NetVertex), frame->getPayloadSize());
+        dbprintlf("Expecting package size %lu, got %d (2x NetVertex)", 2 * sizeof(NetVertex), frame->getPayloadSize());
         Close();
         delete frame;
         return -6;

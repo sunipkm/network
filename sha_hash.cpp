@@ -42,7 +42,7 @@ void sha1_hash_t::copy(const sha1_hash_t &src)
 const bool sha1_hash_t::validate() const
 {
     int result = 0;
-    for (int i = 0; i < sizeof(bytes); i++)
+    for (unsigned int i = 0; i < sizeof(bytes); i++)
         result |= bytes[i];
     if (result == 0)
         return false;
@@ -51,7 +51,7 @@ const bool sha1_hash_t::validate() const
 bool sha1_hash_t::operator==(const sha1_hash_t &hash) const
 {
     bool match = true;
-    for (int i = 0; i < sizeof(bytes); i++)
+    for (unsigned int i = 0; i < sizeof(bytes); i++)
     {
         match = bytes[i] == hash.bytes[i];
         if (!match)

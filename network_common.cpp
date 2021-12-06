@@ -266,7 +266,7 @@ ssize_t NetFrame::recvFrame(NetData *network_data, bool CloseOnFailure)
     // Verify GUID.
     NetFrameHeader header;
     memset(header.bytes, 0x0, sizeof(NetFrameHeader));
-    int offset = 0;
+    unsigned int offset = 0;
     int recv_attempts = 0;
 
     do
