@@ -118,7 +118,7 @@ int main(int argc, char *argv[])
                     printf("Avg:  %lf sec %lf usec\n", avg_sec, avg_nsec * 0.001);
                 }
             }
-            if (rcv_val == -1) // Client disconnected
+            if (!server->GetClient(i)->connection_ready && !fresh_run)
             {
                 // Log the data
                 FILE *fp = fopen("data.txt", "a");
@@ -127,10 +127,6 @@ int main(int argc, char *argv[])
 
                 // Just quit
                 exit(42);
-
-                // End this run
-                // fresh_run = true;
-                // memset(avg, 0x0, sizeof(avg));
             }
             delete frame;
         }
