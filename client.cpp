@@ -16,6 +16,9 @@
 #endif
 #include <signal.h>
 #include <meb_debug.hpp>
+#include <sys/time.h>
+
+// #define BUFFER_SZ 256
 
 volatile sig_atomic_t done = 0;
 
@@ -28,6 +31,15 @@ static char IP_ADDR[16] = "127.0.0.1";
 
 int main(int argc, char *argv[])
 {
+    if (argc != 3)
+    {
+        dbprintlf("Usage: ./client.out {Packet Size, Bytes} {Number of Packets}");
+        return -1;
+    }
+
+    int buffer_size = atoi(argv[1]);
+    int num_packets = atoi(argv[2]);
+
     char *ip_addr = IP_ADDR;
     if (argc == 2)
         ip_addr = argv[1];
@@ -40,29 +52,34 @@ int main(int argc, char *argv[])
     std::cout << "Connecting to server: " << conn->ConnectToServer() << std::endl;
     std::cout << "Server vertex: " << std::hex << conn->GetServerVertex() << std::endl;
     std::cout << "Client vertex: " << conn->GetVertex() << std::dec << std::endl;
-    sleep(1);
-#ifndef NETWORK_WINDOWS
-    pthread_t poll_thread;
-    if (pthread_create(&poll_thread, NULL, gs_polling_thread, conn) < 0)
-#else
-    HANDLE poll_thread;
-    DWORD status = 0;
-    poll_thread = CreateThread(0, 0, gs_polling_thread, conn, 0, &status);
-    if (poll_thread == INVALID_HANDLE_VALUE)
-#endif
+    // sleep(1);
+// #ifndef NETWORK_WINDOWS
+//     pthread_t poll_thread;
+//     if (pthread_create(&poll_thread, NULL, gs_polling_thread, conn) < 0)
+// #else
+//     HANDLE poll_thread;
+//     DWORD status = 0;
+//     poll_thread = CreateThread(0, 0, gs_polling_thread, conn, 0, &status);
+//     if (poll_thread == INVALID_HANDLE_VALUE)
+// #endif
+    // {
+    //     std::cout << "pthread_create failed" << std::endl;
+    //     return -1;
+    // }
+    uint8_t buffer[buffer_size];
+    // while (!done)
+    for(int i = 0; (i < num_packets) && (!done); i++)
     {
-        std::cout << "pthread_create failed" << std::endl;
-        return -1;
+        clock_gettime(CLOCK_REALTIME, (struct timespec *) buffer);
+        NetFrame *nf = new NetFrame(buffer, sizeof(buffer), 0x1, NetType::DATA, FrameStatus::NONE, conn->GetServerVertex());
+        nf->sendFrame(conn);
+        usleep(10000);
     }
-    while (!done)
-    {
-        sleep(1);
-    }
-#ifndef NETWORK_WINDOWS
-    pthread_cancel(poll_thread);
-#else
-    TerminateThread(poll_thread, status);
-#endif
+// #ifndef NETWORK_WINDOWS
+//     pthread_cancel(poll_thread);
+// #else
+//     TerminateThread(poll_thread, status);
+// #endif
     delete conn;
     return 0;
 }

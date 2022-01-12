@@ -134,7 +134,7 @@ int NetFrame::retrievePayload(void *storage, ssize_t capacity)
 
 ssize_t NetFrame::sendFrame(NetData *network_data, bool CloseOnFailure)
 {
-    if (!(network_data->connection_ready))
+    if (!(network_data->connection_ready || network_data->conn_attempt))
     {
         dbprintlf(YELLOW_FG "Connection is not ready, send aborted.");
         return -1;
@@ -258,7 +258,7 @@ ssize_t NetFrame::recvFrame(NetData *network_data, bool CloseOnFailure)
 {
     ssize_t retval = -1;
 
-    if (!(network_data->connection_ready))
+    if (!(network_data->connection_ready || network_data->conn_attempt))
     {
         dbprintlf(YELLOW_FG "Connection is not ready, recv aborted: %d, %p", network_data->connection_ready, network_data);
         return -1;

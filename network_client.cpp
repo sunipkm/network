@@ -196,7 +196,7 @@ void DestroySSL()
 
 int NetDataClient::OpenSSLConn()
 {
-    if (ctx != NULL && connection_ready)
+    if (ctx != NULL && (conn_attempt))
     {
         cssl = SSL_new(ctx);
         if (!SSL_set_fd(cssl, _socket))
@@ -289,7 +289,7 @@ int NetDataClient::ConnectToServer()
     else
     {
         connect_status = 1;
-        connection_ready = true;
+        conn_attempt = true;
         dbprintlf(GREEN_FG "Set connection ready");
     }
     if (connect_status < 0)
@@ -382,6 +382,8 @@ int NetDataClient::ConnectToServer()
         Close();
         return -7;
     }
+    connection_ready = true;
+    conn_attempt = false;
     recv_active = true;
     return connect_status;
 }
