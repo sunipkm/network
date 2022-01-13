@@ -66,6 +66,7 @@ int main(int argc, char *argv[])
         clock_gettime(CLOCK_REALTIME, (struct timespec *) buffer);
         NetFrame *nf = new NetFrame(buffer, sizeof(buffer), 0x1, NetType::DATA, FrameStatus::NONE, conn->GetServerVertex());
         nf->sendFrame(conn);
+        delete nf;
         counter++;
         fprintf(fp, "%llu\n", counter);
         fflush(fp);
