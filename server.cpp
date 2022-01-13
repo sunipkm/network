@@ -60,18 +60,18 @@ int main(int argc, char *argv[])
 #ifndef NETWORK_WINDOWS
     signal(SIGPIPE, SIG_IGN);
 #endif
-    
+
     // timespec avg[1];
     double avg_sec = 0.0;
     double avg_nsec = 0.0;
     bool fresh_run = true;
     long N = 0;
-    
+
+    uint8_t *buf = new uint8_t[NETFRAME_MAX_PAYLOAD_SIZE];
     while (!done)
     {
         for (int i = 0; i < server->GetNumClients(); i++)
         {
-            uint8_t buf[512];
 
             static struct timespec tm[1];
             static struct timespec tm1[1];
@@ -86,7 +86,7 @@ int main(int argc, char *argv[])
                 else
                 {
                     clock_gettime(CLOCK_REALTIME, tm);
-                    frame->retrievePayload(buf, sizeof(buf));
+                    frame->retrievePayload(buf, NETFRAME_MAX_PAYLOAD_SIZE);
                     memcpy(tm1, buf, sizeof(struct timespec));
                     struct timespec diff[1];
                     timeval_subtract(diff, tm, tm1);
@@ -102,8 +102,8 @@ int main(int argc, char *argv[])
                     }
                     else
                     {
-                        avg_sec = (avg_sec + (diff->tv_sec / (float)N)) / (1 + (1/(float)N));
-                        avg_nsec = (avg_nsec + (diff->tv_nsec / (float)N)) / (1 + (1/(float)N));
+                        avg_sec = (avg_sec + (diff->tv_sec / (float)N)) / (1 + (1 / (float)N));
+                        avg_nsec = (avg_nsec + (diff->tv_nsec / (float)N)) / (1 + (1 / (float)N));
 
                         N++;
                     }
@@ -115,7 +115,7 @@ int main(int argc, char *argv[])
             {
                 // Log the data
                 FILE *fp = fopen("data.txt", "a");
-                fprintf(fp, "packet size, avg sec, avg usec: %d %lf %lf\n\n", sizeof(buf), avg_sec, avg_nsec * 0.001);
+                fprintf(fp, "packet size, avg sec, avg usec: %d %lf %lf\n\n", NETFRAME_MAX_PAYLOAD_SIZE, avg_sec, avg_nsec * 0.001);
                 fclose(fp);
 
                 // Just quit
@@ -126,5 +126,6 @@ int main(int argc, char *argv[])
         usleep(5000);
     }
     delete server;
+    delete[] buf;
     return 0;
 }

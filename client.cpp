@@ -57,14 +57,14 @@ int main(int argc, char *argv[])
     //     std::cout << "pthread_create failed" << std::endl;
     //     return -1;
     // }
-    uint8_t buffer[512];
+    uint8_t *buffer = new uint8_t[NETFRAME_MAX_PAYLOAD_SIZE];
     FILE *fp = fopen("send_stat.txt", "w");
     unsigned long long counter = 0;
     // while (!done)
     while (!done)
     {
         clock_gettime(CLOCK_REALTIME, (struct timespec *) buffer);
-        NetFrame *nf = new NetFrame(buffer, sizeof(buffer), 0x1, NetType::DATA, FrameStatus::NONE, conn->GetServerVertex());
+        NetFrame *nf = new NetFrame(buffer, NETFRAME_MAX_PAYLOAD_SIZE, 0x1, NetType::DATA, FrameStatus::NONE, conn->GetServerVertex());
         nf->sendFrame(conn);
         delete nf;
         counter++;
@@ -72,6 +72,7 @@ int main(int argc, char *argv[])
         fflush(fp);
         usleep(10000);
     }
+    delete [] buffer;
 // #ifndef NETWORK_WINDOWS
 //     pthread_cancel(poll_thread);
 // #else
