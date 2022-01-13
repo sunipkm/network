@@ -163,7 +163,7 @@ ssize_t NetFrame::sendFrame(NetData *network_data, bool CloseOnFailure)
     ssize_t send_size = 0;
     uint8_t *buffer = nullptr;
     ssize_t malloc_size = sizeof(NetFrameHeader) + payload_buffer_size + sizeof(NetFrameFooter);
-    buffer = (uint8_t *)malloc(malloc_size);
+    buffer = new uint8_t[malloc_size];
 
     if (buffer == nullptr)
     {
@@ -214,7 +214,7 @@ ssize_t NetFrame::sendFrame(NetData *network_data, bool CloseOnFailure)
                     FD_SET(sock, &fds);
 
                     struct timeval timeout;
-                    timeout.tv_sec = 5;
+                    timeout.tv_sec = RECV_TIMEOUT;
                     timeout.tv_usec = 0;
 
                     int sel = select(sock + 1, NULL, &fds, NULL, &timeout);
@@ -249,7 +249,8 @@ ssize_t NetFrame::sendFrame(NetData *network_data, bool CloseOnFailure)
                 network_data->Close();
         }
     }
-    free(buffer);
+    delete [] buffer;
+    buffer = nullptr;
 
     return send_size;
 }
@@ -312,7 +313,7 @@ ssize_t NetFrame::recvFrame(NetData *network_data, bool CloseOnFailure)
                         FD_SET(sock, &fds);
                         
                         struct timeval timeout;
-                        timeout.tv_sec = 5;
+                        timeout.tv_sec = RECV_TIMEOUT;
                         timeout.tv_usec = 0;
 
                         err = select(sock+1, &fds, NULL, NULL, &timeout);
@@ -476,7 +477,7 @@ ssize_t NetFrame::recvFrame(NetData *network_data, bool CloseOnFailure)
 
         if (payload_buffer_size <= NETFRAME_MAX_PAYLOAD_SIZE)
         {
-            this->payload = (uint8_t *)malloc(payload_buffer_size);
+            this->payload = new uint8_t[payload_buffer_size];
         }
         else
         {
