@@ -12,10 +12,10 @@
 #include "network_server.hpp"
 #ifndef NETWORK_WINDOWS
 #include <unistd.h>
+#include <sys/time.h>
 #endif
 #include <signal.h>
-#include <sys/time.h>
-#include "meb_debug.hpp"
+#include "meb_print.hpp"
 
 // #define BUFFER_SZ 2048
 
@@ -25,6 +25,7 @@ void sighandler(int sig)
 {
     done = 1;
 }
+
 int timeval_subtract(
     struct timespec *result, struct timespec *x, struct timespec *y)
 {
@@ -53,14 +54,6 @@ int timeval_subtract(
 
 int main(int argc, char *argv[])
 {
-    if (argc != 2)
-    {
-        dbprintlf("Usage: ./server.out {Packet Size, Bytes}");
-        return -1;
-    }
-
-    int buffer_size = atoi(argv[1]);
-
     sha1_hash_t passwd = sha1_hash_t("Hello world", 12);
     NetDataServer *server = new NetDataServer(52000, 1, passwd);
     signal(SIGINT, sighandler);
@@ -78,7 +71,7 @@ int main(int argc, char *argv[])
     {
         for (int i = 0; i < server->GetNumClients(); i++)
         {
-            uint8_t buf[buffer_size];
+            uint8_t buf[512];
 
             static struct timespec tm[1];
             static struct timespec tm1[1];
@@ -97,7 +90,7 @@ int main(int argc, char *argv[])
                     memcpy(tm1, buf, sizeof(struct timespec));
                     struct timespec diff[1];
                     timeval_subtract(diff, tm, tm1);
-                    printf("Diff: %lu sec %lf usec\n", diff->tv_sec, diff->tv_nsec * 0.001);
+                    printf("Diff: %llu sec %lf usec\n", diff->tv_sec, diff->tv_nsec * 0.001);
 
                     // Set avg
                     if (fresh_run)
@@ -122,7 +115,7 @@ int main(int argc, char *argv[])
             {
                 // Log the data
                 FILE *fp = fopen("data.txt", "a");
-                fprintf(fp, "packet size, avg sec, avg usec: %d %lf %lf\n\n", buffer_size, avg_sec, avg_nsec * 0.001);
+                fprintf(fp, "packet size, avg sec, avg usec: %d %lf %lf\n\n", sizeof(buf), avg_sec, avg_nsec * 0.001);
                 fclose(fp);
 
                 // Just quit

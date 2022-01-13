@@ -13,10 +13,10 @@
 #ifndef NETWORK_WINDOWS
 #include <pthread.h>
 #include <unistd.h>
+#include <sys/time.h>
 #endif
 #include <signal.h>
-#include <meb_debug.hpp>
-#include <sys/time.h>
+#include <meb_print.hpp>
 
 // #define BUFFER_SZ 256
 
@@ -31,15 +31,6 @@ static char IP_ADDR[16] = "127.0.0.1";
 
 int main(int argc, char *argv[])
 {
-    if (argc != 3)
-    {
-        dbprintlf("Usage: ./client.out {Packet Size, Bytes} {Number of Packets}");
-        return -1;
-    }
-
-    int buffer_size = atoi(argv[1]);
-    int num_packets = atoi(argv[2]);
-
     char *ip_addr = IP_ADDR;
     if (argc == 2)
         ip_addr = argv[1];
@@ -66,13 +57,18 @@ int main(int argc, char *argv[])
     //     std::cout << "pthread_create failed" << std::endl;
     //     return -1;
     // }
-    uint8_t buffer[buffer_size];
+    uint8_t buffer[512];
+    FILE *fp = fopen("send_stat.txt", "w");
+    unsigned long long counter = 0;
     // while (!done)
-    for(int i = 0; (i < num_packets) && (!done); i++)
+    while (!done)
     {
         clock_gettime(CLOCK_REALTIME, (struct timespec *) buffer);
         NetFrame *nf = new NetFrame(buffer, sizeof(buffer), 0x1, NetType::DATA, FrameStatus::NONE, conn->GetServerVertex());
         nf->sendFrame(conn);
+        counter++;
+        fprintf(fp, "%llu\n", counter);
+        fflush(fp);
         usleep(10000);
     }
 // #ifndef NETWORK_WINDOWS
@@ -80,6 +76,7 @@ int main(int argc, char *argv[])
 // #else
 //     TerminateThread(poll_thread, status);
 // #endif
+    fclose(fp);
     delete conn;
     return 0;
 }

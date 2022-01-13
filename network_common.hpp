@@ -324,12 +324,17 @@ static inline uint16_t internal_crc16(unsigned char *data_p, uint16_t length)
  * @param t Microseconds to sleep for
  * @return 0
  */
-static inline unsigned long usleep(unsigned long t)
-{
-    if (t == 0)
-        return 0;
-    unsigned long sleeptime = t / 1000 + (t % 1000 > 0);
-    Sleep(sleeptime);
+static inline unsigned long usleep(__int64 usec) 
+{ 
+    HANDLE timer; 
+    LARGE_INTEGER ft; 
+
+    ft.QuadPart = -(10*usec); // Convert to 100 nanosecond interval, negative value indicates relative time
+
+    timer = CreateWaitableTimer(NULL, TRUE, NULL); 
+    SetWaitableTimer(timer, &ft, 0, NULL, NULL, 0); 
+    WaitForSingleObject(timer, INFINITE); 
+    CloseHandle(timer);
     return 0;
 }
 /**
@@ -345,6 +350,16 @@ static inline unsigned int sleep(unsigned int t)
     unsigned int sleeptime = t * 1000;
     Sleep(sleeptime);
     return 0;
+}
+
+#define CLOCK_REALTIME 0
+static int clock_gettime(int, struct timespec *spec)
+{
+    __int64 wintime; GetSystemTimeAsFileTime((FILETIME*)&wintime);
+   wintime      -=116444736000000000i64;  //1jan1601 to 1jan1970
+   spec->tv_sec  =wintime / 10000000i64;           //seconds
+   spec->tv_nsec =wintime % 10000000i64 *100;      //nano-seconds
+   return 0;
 }
 #endif
 
