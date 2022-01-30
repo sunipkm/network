@@ -81,17 +81,6 @@
 #endif // MEB_CODES
 #endif // defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
 
-#ifndef dbprintlf
-#define dbprintlf(format, ...)                                                                                    \
-    {                                                                                                             \
-        if (MEB_DBGLVL & MEB_DBG_DBPRINT)                                                                         \
-        {                                                                                                         \
-            fprintf(stderr, "[%s:%d | %s] " format TERMINATOR "\n", __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
-            fflush(stderr);                                                                                       \
-        }                                                                                                         \
-    }
-#endif // dbprintlf
-
 #ifndef dbprintf
 #define dbprintf(format, ...)                                                                                \
     {                                                                                                        \
@@ -102,6 +91,11 @@
         }                                                                                                    \
     }
 #endif // dbprintf
+
+#ifndef dbprintlf
+#define dbprintlf(format, ...) \
+    dbprintf(format "\n", #__VA_ARGS__)
+#endif
 
 #if !defined(_MSC_VER)
 
@@ -120,17 +114,8 @@
 #endif // bprintf
 
 #ifndef bprintlf
-#define bprintlf(str, ...)                                             \
-    (                                                                  \
-        {                                                              \
-            int _meb_rc = 0;                                           \
-            if (MEB_DBGLVL & MEB_DBG_BPRINT)                           \
-            {                                                          \
-                _meb_rc = printf(str TERMINATOR " \n", ##__VA_ARGS__); \
-                fflush(stdout);                                        \
-            }                                                          \
-            _meb_rc;                                                   \
-        })
+#define bprintlf(str, ...) \
+    bprintf(str "\n", #__VA_ARGS__)
 #endif // bprintlf
 
 #else
@@ -138,12 +123,12 @@
 #if (MEB_DBGLVL & MEB_DBG_BPRINT)
 
 #ifndef bprintf
-#define bprintf(str, ...)                  \
+#define bprintf(str, ...) \
     printf(str TERMINATOR, ##__VA_ARGS__);
 #endif // bprintf
 
 #ifndef bprintlf
-#define bprintlf(str, ...)                       \
+#define bprintlf(str, ...) \
     printf(str TERMINATOR "\n", ##__VA_ARGS__);
 #endif // bprintlf
 
@@ -180,7 +165,7 @@ static inline char *get_time_now()
 #ifndef _MSC_VER
     static __thread char buf[128];
 #else
-    __declspec( thread ) static char buf[128];
+    __declspec(thread) static char buf[128];
 #endif
     time_t t = time(NULL);
     struct tm tm = *localtime(&t);
@@ -204,5 +189,22 @@ static inline char *get_time_now()
 #define tprintlf(str, ...) \
     tprintf(str "\n", ##__VA_ARGS__)
 #endif // tprintlf
+
+#ifndef dbtprintf
+#define dbtprintf(format, ...)                                                    \
+    {                                                                             \
+        if (MEB_DBGLVL & MEB_DBG_DBPRINT)                                         \
+        {                                                                         \
+            fprintf(stderr, "%s[%s:%d | %s] " format TERMINATOR,                  \
+                    get_time_now(), __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
+            fflush(stderr);                                                       \
+        }                                                                         \
+    }
+#endif // dbprintlf
+
+#ifndef dbtprintlf
+#define dbtprintlf(format, ...) \
+    dbprintf(format "\n", #__VA_ARGS__);
+#endif
 
 #endif // MEB_PRINT_H
