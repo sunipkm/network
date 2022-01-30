@@ -94,7 +94,7 @@
 
 #ifndef dbprintlf
 #define dbprintlf(format, ...) \
-    dbprintf(format "\n", #__VA_ARGS__)
+    dbprintf(format "\n", ##__VA_ARGS__)
 #endif
 
 #if !defined(_MSC_VER)
@@ -115,7 +115,7 @@
 
 #ifndef bprintlf
 #define bprintlf(str, ...) \
-    bprintf(str "\n", #__VA_ARGS__)
+    bprintf(str "\n", ##__VA_ARGS__)
 #endif // bprintlf
 
 #else
@@ -204,7 +204,7 @@ static inline char *get_time_now()
 
 #ifndef dbtprintlf
 #define dbtprintlf(format, ...) \
-    dbprintf(format "\n", #__VA_ARGS__);
+    dbprintf(format "\n", ##__VA_ARGS__);
 #endif
 
 #endif // MEB_PRINT_H
