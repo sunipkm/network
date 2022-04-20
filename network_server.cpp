@@ -54,8 +54,17 @@ void InitializeSSLLibrary()
     }
 }
 
-SSL_CTX *InitializeSSLServer(void)
+SSL_CTX *InitializeSSLServer(const char *cert_name = NULL, const char *key_name = NULL)
 {
+    char *_cert_name = "./cert.pem", *_key_name = "./key.pem";
+    if (cert_name != NULL)
+    {
+        _cert_name = (char *) cert_name;
+    }
+    if (key_name != NULL)
+    {
+        _key_name = (char *) key_name;
+    }
     InitializeSSLLibrary();
     SSL_CTX *ctx = SSL_CTX_new(TLSv1_2_server_method());
     if (ctx == NULL)
@@ -63,8 +72,8 @@ SSL_CTX *InitializeSSLServer(void)
         dbprintlf(FATAL "Could create SSL context");
         return NULL;
     }
-    int use_cert = SSL_CTX_use_certificate_file(ctx, "./cert.pem", SSL_FILETYPE_PEM);
-    int use_prv = SSL_CTX_use_PrivateKey_file(ctx, "./key.pem", SSL_FILETYPE_PEM);
+    int use_cert = SSL_CTX_use_certificate_file(ctx, _cert_name, SSL_FILETYPE_PEM);
+    int use_prv = SSL_CTX_use_PrivateKey_file(ctx, _key_name, SSL_FILETYPE_PEM);
     if ((use_cert != 1) || (use_prv != 1) || (SSL_CTX_check_private_key(ctx) != 1))
     {
         dbprintlf("Cert: %d, Private Key: %d, Validation: %d", use_cert, use_prv, SSL_CTX_check_private_key(ctx));
@@ -117,15 +126,15 @@ DWORD WINAPI gs_accept_thread(LPVOID args)
     return NULL;
 }
 
-NetDataServer::NetDataServer(NetPort listening_port, int clients, sha1_hash_t auth_token)
+NetDataServer::NetDataServer(NetPort listening_port, int clients, sha1_hash_t auth_token, const char *certname, const char *keyname)
 {
     this->auth_token = new sha1_hash_t();
     InitializeSSLLibrary();
-    _NetDataServer(listening_port, clients);
+    _NetDataServer(listening_port, clients, certname, keyname);
     this->auth_token->copy(auth_token.bytes);
 }
 
-void NetDataServer::_NetDataServer(NetPort listening_port, int clients)
+void NetDataServer::_NetDataServer(NetPort listening_port, int clients, const char *certname, const char *keyname)
 {
     srand(time(NULL));
     origin = rand() | 0x1000; // ensure byte[1] has MSB set
@@ -192,7 +201,7 @@ void NetDataServer::_NetDataServer(NetPort listening_port, int clients)
         this->clients[i].serv = this;
         this->clients[i].origin = (NetVertex)0;
         for (int j = 20; (j > 0) && (this->clients[i].ctx == NULL); j--)
-            this->clients[i].ctx = InitializeSSLServer();
+            this->clients[i].ctx = InitializeSSLServer(certname, keyname);
         if (this->clients[i].ctx == NULL)
         {
             dbprintlf(FATAL "Failed to initialize SSL context for client %d", i);

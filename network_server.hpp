@@ -54,7 +54,7 @@ private:
 #endif
     friend int gs_accept(NetDataServer *, int);
 
-    void _NetDataServer(NetPort listening_port, int clients);
+    void _NetDataServer(NetPort listening_port, int clients, const char *certname, const char *keyname);
 
 public:
     /**
@@ -64,7 +64,7 @@ public:
      * @param clients Maximum number of connections to be accepted
      * @param auth_token Authentication token to authenticate clients against
      */
-    NetDataServer(NetPort listening_port, int clients, sha1_hash_t auth_token);
+    NetDataServer(NetPort listening_port, int clients, sha1_hash_t auth_token, const char *certname = NULL, const char *keyname = NULL);
     /**
      * @brief Destroy the NetDataServer object and close all active connections
      * 
