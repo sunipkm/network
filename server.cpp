@@ -15,6 +15,7 @@
 #include <sys/time.h>
 #endif
 #include <signal.h>
+#include <inttypes.h>
 #include "meb_print.hpp"
 
 // #define BUFFER_SZ 2048
@@ -90,7 +91,7 @@ int main(int argc, char *argv[])
                     memcpy(tm1, buf, sizeof(struct timespec));
                     struct timespec diff[1];
                     timeval_subtract(diff, tm, tm1);
-                    printf("Diff: %llu sec %lf usec\n", diff->tv_sec, diff->tv_nsec * 0.001);
+                    printf("Diff: %" PRId64 " sec %lf usec\n", (int64_t) diff->tv_sec, diff->tv_nsec * 0.001);
 
                     // Set avg
                     if (fresh_run)

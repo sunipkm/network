@@ -1,8 +1,8 @@
 CC = gcc
 CXX = g++
-EDCFLAGS = -I ./ -Wall -std=c11 -O2 -Wno-deprecated-declarations $(CFLAGS)
-EDCXXFLAGS = -I./ -Wall -std=c++11 -O2 -Wno-deprecated-declarations $(CXXFLAGS)
-EDLDFLAGS = -lpthread -lm -lssl -lcrypto $(LDFLAGS)
+EDCFLAGS = -I ./ -Wall -std=c11 -O2 -Wno-deprecated-declarations `pkg-config --cflags openssl` $(CFLAGS)
+EDCXXFLAGS = -I./ -Wall -std=c++11 -O2 -Wno-deprecated-declarations `pkg-config --cflags openssl` $(CXXFLAGS)
+EDLDFLAGS = -lpthread -lm `pkg-config --libs openssl` -lssl -lcrypto $(LDFLAGS)
 
 CXXOBJS = network_common.o
 		
