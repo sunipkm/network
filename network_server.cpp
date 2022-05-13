@@ -4,9 +4,9 @@
  * @brief Network Server Implementation
  * @version 0.1
  * @date 2021-09-10
- * 
+ *
  * @copyright Copyright (c) 2021
- * 
+ *
  */
 
 #include "network_common.hpp"
@@ -55,7 +55,7 @@ void InitializeSSLLibrary()
     }
 }
 
-SSL_CTX *InitializeSSLServer(void)
+SSL_CTX *InitializeSSLServer(bool with_chain)
 {
     InitializeSSLLibrary();
     SSL_CTX *ctx = SSL_CTX_new(TLSv1_2_server_method());
@@ -66,7 +66,10 @@ SSL_CTX *InitializeSSLServer(void)
     }
     int use_cert = SSL_CTX_use_certificate_file(ctx, "./cert.pem", SSL_FILETYPE_PEM);
     int use_prv = SSL_CTX_use_PrivateKey_file(ctx, "./key.pem", SSL_FILETYPE_PEM);
-    if ((use_cert != 1) || (use_prv != 1) || (SSL_CTX_check_private_key(ctx) != 1))
+    int use_chain = 1;
+    if (with_chain)
+        SSL_CTX_use_certificate_chain_file(ctx, "./fullchain.pem");
+    if ((use_cert != 1) || (use_prv != 1) || (use_chain != 1) || (SSL_CTX_check_private_key(ctx) != 1))
     {
         dbprintlf("Cert: %d, Private Key: %d, Validation: %d", use_cert, use_prv, SSL_CTX_check_private_key(ctx));
         return NULL;
@@ -116,27 +119,26 @@ DWORD WINAPI gs_accept_thread(LPVOID args)
                     // check frame type and process
                     switch (frame->getType())
                     {
-                        case NetType::POLL: // support polling for other clients?
+                    case NetType::POLL: // support polling for other clients?
 
-                            break;
-                        
-                        case NetType::SRV: // implement server commands here
+                        break;
 
-                            break;
-                        
-                        case NetType::DATA:
-                            dbprintlf("Callback work queue goes here");
-                            break;
-                        
-                        case NetType::MAX:
-                            dbprintlf(FATAL "Not allowed");
-                            break;
-                        
-                        default:
-                            dbprintf(FATAL "Attack?");
-                            break;
+                    case NetType::SRV: // implement server commands here
+
+                        break;
+
+                    case NetType::DATA:
+                        dbprintlf("Callback work queue goes here");
+                        break;
+
+                    case NetType::MAX:
+                        dbprintlf(FATAL "Not allowed");
+                        break;
+
+                    default:
+                        dbprintf(FATAL "Attack?");
+                        break;
                     }
-                    
                 }
                 delete frame;
             }
@@ -148,9 +150,10 @@ DWORD WINAPI gs_accept_thread(LPVOID args)
     return NULL;
 }
 
-NetDataServer::NetDataServer(NetPort listening_port, int clients, sha1_hash_t auth_token)
+NetDataServer::NetDataServer(NetPort listening_port, int clients, sha1_hash_t auth_token, bool with_chain)
 {
     this->auth_token = new sha1_hash_t();
+    this->with_chain = with_chain;
     InitializeSSLLibrary();
     _NetDataServer(listening_port, clients);
     this->auth_token->copy(auth_token);
@@ -223,7 +226,7 @@ void NetDataServer::_NetDataServer(NetPort listening_port, int clients)
         this->clients[i].serv = this;
         this->clients[i].origin = (NetVertex)0;
         for (int j = 20; (j > 0) && (this->clients[i].ctx == NULL); j--)
-            this->clients[i].ctx = InitializeSSLServer();
+            this->clients[i].ctx = InitializeSSLServer(with_chain);
         if (this->clients[i].ctx == NULL)
         {
             dbprintlf(FATAL "Failed to initialize SSL context for client %d", i);
@@ -358,7 +361,7 @@ int gs_accept(NetDataServer *serv, int client_id)
     }
     sha1_hash_t auth_token;
     frame->retrievePayload((void *)auth_token.getBytes(), SHA512_DIGEST_LENGTH);
-    if (!(*(serv->auth_token)==auth_token))
+    if (!(*(serv->auth_token) == auth_token))
     {
         dbprintlf("Authentication token mismatch");
         client->Close();
@@ -370,7 +373,8 @@ int gs_accept(NetDataServer *serv, int client_id)
     while (_vertex < 0xffff)
     {
 #ifdef NETWORK_WINDOWS
-        while(rand_s(&_vertex));
+        while (rand_s(&_vertex))
+            ;
 #else
         _vertex = rand();
 #endif

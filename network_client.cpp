@@ -4,9 +4,9 @@
  * @brief Network Client Implementation
  * @version 1.0
  * @date 2021-09-10
- * 
+ *
  * @copyright Copyright (c) 2021
- * 
+ *
  */
 
 #include "network_common.hpp"
@@ -32,6 +32,10 @@
 #include <signal.h>
 #endif
 #include "network_client.hpp"
+
+#include <openssl/bio.h>
+#include <openssl/x509.h>
+#include <openssl/x509v3.h>
 
 static int ssl_lib_init = 0;
 
@@ -361,7 +365,7 @@ int NetDataClient::ConnectToServer()
     }
     if (frame->getType() != NetType::SRV)
     {
-        dbprintlf("Expecting %d, got %d for frame type", (int) NetType::SRV, (int) frame->getType());
+        dbprintlf("Expecting %d, got %d for frame type", (int)NetType::SRV, (int)frame->getType());
         Close();
         delete frame;
         return -5;
@@ -461,6 +465,107 @@ std::string *extractStringFromX509Info(const char *info, const char *key)
     return str;
 }
 
+/*
+ * Cert verification resources:
+ * 
+ * https://stackoverflow.com/questions/16291809/programmatically-verify-certificate-chain-using-openssl-api
+ * https://gist.github.com/sunipkm/79b0f7b4dd3d53ddbb724c8b0bbd8890
+ * https://zakird.com/2013/10/13/certificate-parsing-with-openssl
+ * https://docs.scylladb.com/operating-scylla/security/generate-certificate/
+ * 
+ */
+
+static int verify_cb(int ok, X509_STORE_CTX *ctx)
+{
+    if (!ok)
+    {
+        /* check the error code and current cert*/
+        // X509 *currentCert = X509_STORE_CTX_get_current_cert(ctx);
+        int certError = X509_STORE_CTX_get_error(ctx);
+        int depth = X509_STORE_CTX_get_error_depth(ctx);
+        printf("Error depth %d, certError %d", depth, certError);
+    }
+
+    return (ok);
+}
+
+const char* get_validation_errstr(long e) {
+	switch ((int) e) {
+		case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT:
+			return "ERR_UNABLE_TO_GET_ISSUER_CERT";
+		case X509_V_ERR_UNABLE_TO_GET_CRL:
+			return "ERR_UNABLE_TO_GET_CRL";
+		case X509_V_ERR_UNABLE_TO_DECRYPT_CERT_SIGNATURE:
+			return "ERR_UNABLE_TO_DECRYPT_CERT_SIGNATURE";
+		case X509_V_ERR_UNABLE_TO_DECRYPT_CRL_SIGNATURE:
+			return "ERR_UNABLE_TO_DECRYPT_CRL_SIGNATURE";
+		case X509_V_ERR_UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY:
+			return "ERR_UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY";
+		case X509_V_ERR_CERT_SIGNATURE_FAILURE:
+			return "ERR_CERT_SIGNATURE_FAILURE";
+		case X509_V_ERR_CRL_SIGNATURE_FAILURE:
+			return "ERR_CRL_SIGNATURE_FAILURE";
+		case X509_V_ERR_CERT_NOT_YET_VALID:
+			return "ERR_CERT_NOT_YET_VALID";
+		case X509_V_ERR_CERT_HAS_EXPIRED:
+			return "ERR_CERT_HAS_EXPIRED";
+		case X509_V_ERR_CRL_NOT_YET_VALID:
+			return "ERR_CRL_NOT_YET_VALID";
+		case X509_V_ERR_CRL_HAS_EXPIRED:
+			return "ERR_CRL_HAS_EXPIRED";
+		case X509_V_ERR_ERROR_IN_CERT_NOT_BEFORE_FIELD:
+			return "ERR_ERROR_IN_CERT_NOT_BEFORE_FIELD";
+		case X509_V_ERR_ERROR_IN_CERT_NOT_AFTER_FIELD:
+			return "ERR_ERROR_IN_CERT_NOT_AFTER_FIELD";
+		case X509_V_ERR_ERROR_IN_CRL_LAST_UPDATE_FIELD:
+			return "ERR_ERROR_IN_CRL_LAST_UPDATE_FIELD";
+		case X509_V_ERR_ERROR_IN_CRL_NEXT_UPDATE_FIELD:
+			return "ERR_ERROR_IN_CRL_NEXT_UPDATE_FIELD";
+		case X509_V_ERR_OUT_OF_MEM:
+			return "ERR_OUT_OF_MEM";
+		case X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT:
+			return "ERR_DEPTH_ZERO_SELF_SIGNED_CERT";
+		case X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN:
+			return "ERR_SELF_SIGNED_CERT_IN_CHAIN";
+		case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY:
+			return "ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY";
+		case X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE:
+			return "ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE";
+		case X509_V_ERR_CERT_CHAIN_TOO_LONG:
+			return "ERR_CERT_CHAIN_TOO_LONG";
+		case X509_V_ERR_CERT_REVOKED:
+			return "ERR_CERT_REVOKED";
+		case X509_V_ERR_INVALID_CA:
+			return "ERR_INVALID_CA";
+		case X509_V_ERR_PATH_LENGTH_EXCEEDED:
+			return "ERR_PATH_LENGTH_EXCEEDED";
+		case X509_V_ERR_INVALID_PURPOSE:
+			return "ERR_INVALID_PURPOSE";
+		case X509_V_ERR_CERT_UNTRUSTED:
+			return "ERR_CERT_UNTRUSTED";
+		case X509_V_ERR_CERT_REJECTED:
+			return "ERR_CERT_REJECTED";
+		case X509_V_ERR_SUBJECT_ISSUER_MISMATCH:
+			return "ERR_SUBJECT_ISSUER_MISMATCH";
+		case X509_V_ERR_AKID_SKID_MISMATCH:
+			return "ERR_AKID_SKID_MISMATCH";
+		case X509_V_ERR_AKID_ISSUER_SERIAL_MISMATCH:
+			return "ERR_AKID_ISSUER_SERIAL_MISMATCH";
+		case X509_V_ERR_KEYUSAGE_NO_CERTSIGN:
+			return "ERR_KEYUSAGE_NO_CERTSIGN";
+		case X509_V_ERR_INVALID_EXTENSION:
+			return "ERR_INVALID_EXTENSION";
+		case X509_V_ERR_INVALID_POLICY_EXTENSION:
+			return "ERR_INVALID_POLICY_EXTENSION";
+		case X509_V_ERR_NO_EXPLICIT_POLICY:
+			return "ERR_NO_EXPLICIT_POLICY";
+		case X509_V_ERR_APPLICATION_VERIFICATION:
+			return "ERR_APPLICATION_VERIFICATION";
+		default:
+			return "ERR_UNKNOWN";
+	}
+}
+
 void NetDataClient::GetCerts()
 {
     if (cssl == NULL || !ssl_ready)
@@ -468,9 +573,22 @@ void NetDataClient::GetCerts()
     X509 *cert = NULL;
     char *line = NULL;
     cert = SSL_get_peer_certificate(cssl); /* get the server's certificate */
+    STACK_OF(X509) *sk = SSL_get_peer_cert_chain(cssl);
+    if (sk == NULL)
+    {
+        sk = sk_X509_new_null();
+    }
+    sk_X509_push(sk, cert);
     if (cert != NULL)
     {
+        char *subj = X509_NAME_oneline(X509_get_subject_name(cert), NULL, 0);
+        char *issuer = X509_NAME_oneline(X509_get_issuer_name(cert), NULL, 0);
+        dbprintlf(GREEN_FG "Cert subject: %s", subj);
+        dbprintlf(GREEN_FG "Cert issuer: %s", issuer);
+        OPENSSL_free(subj);
+        OPENSSL_free(issuer);
         line = X509_NAME_oneline(X509_get_subject_name(cert), 0, 0);
+        dbprintlf(YELLOW_FG "Cert line: %s", line);
         certinfo = new certinfo_t;
         certinfo->country = extractStringFromX509Info(line, "C");
         certinfo->state = extractStringFromX509Info(line, "ST");
@@ -478,14 +596,45 @@ void NetDataClient::GetCerts()
         certinfo->org = extractStringFromX509Info(line, "O");
         certinfo->org_unit = extractStringFromX509Info(line, "OU");
         certinfo->issuer = extractStringFromX509Info(line, "CN");
-        certinfo->issuer_email = extractStringFromX509Info(line, "emailAddress");
+        certinfo->issuer_email = extractStringFromX509Info(line, "/emailAddress");
         free(line); /* free the malloc'ed string */
         line = X509_NAME_oneline(X509_get_issuer_name(cert), 0, 0);
         free(line);      /* free the malloc'ed string */
         X509_free(cert); /* free the malloc'ed certificate copy */
     }
     else
+    {
         dbprintlf(FATAL "Info: No client certificates configured.");
+    }
+    X509_STORE *x509_store = NULL;
+    X509_STORE_CTX *x509_store_ctx = NULL;
+    x509_store = X509_STORE_new();
+    int rc = X509_STORE_load_locations(x509_store, NULL, "/etc/ssl/certs"); // TODO: certificate load location selection? Build time default?
+    if (rc != 1)
+    {
+        dbprintlf("Could not store %d", rc);
+    }
+    int num = sk_X509_num(sk);
+    // X509 *top = sk_X509_value(sk, num-1);
+    // X509_STORE_add_cert(x509_store, top); // adds self signed certs to store, allowing verification to return true
+    X509_STORE_set_verify_cb(x509_store, verify_cb);
+    X509_STORE_set_flags(x509_store, 0);
+    x509_store_ctx = X509_STORE_CTX_new();
+
+    X509_STORE_CTX_init(x509_store_ctx, x509_store, cert, sk);
+
+    X509_STORE_CTX_set_purpose(x509_store_ctx, X509_PURPOSE_ANY);
+    int ret = X509_verify_cert(x509_store_ctx);
+    dbprintlf(RED_FG "Verify Cert: %d", ret);
+    if (ret != 1)
+    {
+        int err = X509_STORE_CTX_get_error(x509_store_ctx);
+        dbprintlf(RED_FG "Verify cert err: " YELLOW_FG "%s", get_validation_errstr(err));
+    }
+    if (x509_store_ctx != NULL)
+        X509_STORE_CTX_free(x509_store_ctx);
+    if (x509_store != NULL)
+        X509_STORE_free(x509_store);
 }
 
 void NetDataClient::PrintCerts()

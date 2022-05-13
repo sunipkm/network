@@ -33,6 +33,8 @@ protected:
     NetDataServer *serv = nullptr;
 };
 
+// TODO: Add certs path as input (cert.pem, privkey.pem and fullchain.pem)
+
 class NetDataServer
 {
 private:
@@ -40,6 +42,7 @@ private:
     int num_clients;
     int fd = -1;
     bool listen_done = false;
+    bool with_chain = false;
 #ifndef NETWORK_WINDOWS
     pthread_t accept_thread;
 #else
@@ -63,8 +66,9 @@ public:
      * @param listening_port Port to listen on
      * @param clients Maximum number of connections to be accepted
      * @param auth_token Authentication token to authenticate clients against
+     * @param with_chain Send full certificate chain for root trust validation
      */
-    NetDataServer(NetPort listening_port, int clients, sha1_hash_t auth_token);
+    NetDataServer(NetPort listening_port, int clients, sha1_hash_t auth_token, bool with_chain = false);
     /**
      * @brief Destroy the NetDataServer object and close all active connections
      * 
