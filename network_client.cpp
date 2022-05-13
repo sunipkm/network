@@ -473,6 +473,8 @@ std::string *extractStringFromX509Info(const char *info, const char *key)
  * https://zakird.com/2013/10/13/certificate-parsing-with-openssl (mirror: https://gist.github.com/sunipkm/f53693abeeccb03599405a721c13d78c)
  * https://docs.scylladb.com/operating-scylla/security/generate-certificate/
  * 
+ * https://superuser.com/questions/1675013/for-websites-is-your-passwords-hash-computed-on-the-client-or-the-server-side
+ * 
  * For now, copy I had to copy the lets_encrypt_r3 root certificate to /etc/ssl/certs to get verification to pass with lets encrypt certs (cert, key, fullchain) generated for sunipkm.tk
  * 
  */
