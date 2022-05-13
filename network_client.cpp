@@ -470,8 +470,10 @@ std::string *extractStringFromX509Info(const char *info, const char *key)
  * 
  * https://stackoverflow.com/questions/16291809/programmatically-verify-certificate-chain-using-openssl-api
  * https://gist.github.com/sunipkm/79b0f7b4dd3d53ddbb724c8b0bbd8890
- * https://zakird.com/2013/10/13/certificate-parsing-with-openssl
+ * https://zakird.com/2013/10/13/certificate-parsing-with-openssl (mirror: https://gist.github.com/sunipkm/f53693abeeccb03599405a721c13d78c)
  * https://docs.scylladb.com/operating-scylla/security/generate-certificate/
+ * 
+ * For now, copy I had to copy the lets_encrypt_r3 root certificate to /etc/ssl/certs to get verification to pass with lets encrypt certs (cert, key, fullchain) generated for sunipkm.tk
  * 
  */
 
